@@ -95,8 +95,19 @@ const BoardRoom = ({ state, setState }) => {
     // Listen for REAL workflow creation from backend
     newSocket.on('workflow-created', (workflow) => {
       console.log('Real workflow created:', workflow);
-      setCurrentWorkflow(workflow);
-      setWorkflowTasks(workflow.tasks || []);
+        // If backend provided an id, attempt to fetch merged workflow details (DB + in-memory)
+        if (workflow && workflow.workflowId) {
+          fetchWorkflowDetails(workflow.workflowId).then(full => {
+            setCurrentWorkflow(full || workflow);
+            setWorkflowTasks((full && full.tasks) || workflow.tasks || []);
+          }).catch(() => {
+            setCurrentWorkflow(workflow);
+            setWorkflowTasks(workflow.tasks || []);
+          });
+        } else {
+          setCurrentWorkflow(workflow);
+          setWorkflowTasks(workflow.tasks || []);
+        }
 
       // Update project brief with real data
       setState(prev => ({
@@ -120,7 +131,15 @@ const BoardRoom = ({ state, setState }) => {
     // Listen for REAL workflow progress updates
     newSocket.on('workflow-progress', (progress) => {
       console.log('Real workflow progress:', progress);
-      setWorkflowTasks(progress.tasks || []);
+        // If progress contains workflowId, refresh merged workflow details
+        if (progress && progress.workflowId) {
+          fetchWorkflowDetails(progress.workflowId).then(full => {
+            setWorkflowTasks((full && full.tasks) || progress.tasks || []);
+            setCurrentWorkflow(full || null);
+          }).catch(() => setWorkflowTasks(progress.tasks || []));
+        } else {
+          setWorkflowTasks(progress.tasks || []);
+        }
       
       // Update progress in project brief
       setState(prev => ({
@@ -259,6 +278,8 @@ const BoardRoom = ({ state, setState }) => {
   const submitClarifier = async () => {
     if (!pendingClarifier) return;
     try {
+      // capture original directive so we can retry after clearing pendingClarifier
+      const originalDirective = pendingClarifier.originalDirective;
       // Post response to brief respond API
       const briefId = pendingClarifier.question && pendingClarifier.question.briefId ? pendingClarifier.question.briefId : pendingClarifier.question && pendingClarifier.question.meta && pendingClarifier.question.meta.briefId;
       // The server's question payload may include ids; fallback to asking the analyze endpoint if briefId is missing
@@ -288,9 +309,9 @@ const BoardRoom = ({ state, setState }) => {
       // Clear clarifier and retry sending the original directive
       setPendingClarifier(null);
       setClarifierAnswer('Assign requested agent');
-      // Retry original submission
+      // Retry original submission (use captured originalDirective)
       setTimeout(() => {
-        setInputValue(pendingClarifier.originalDirective);
+        setInputValue(originalDirective);
         handleSendMessage();
       }, 200);
 
@@ -358,11 +379,31 @@ const BoardRoom = ({ state, setState }) => {
               Open {artifact.type}
             </a>
           )}
+            {artifact.dbArtifactId && (
+              <a href={`http://localhost:3001/#/artifact/${artifact.dbArtifactId}`} target="_blank" rel="noopener noreferrer" className="artifact-db-link">
+                View in Database
+              </a>
+            )}
         </div>
       </div>
     );
   };
 
+    // Fetch merged workflow details (DB + in-memory) from backend
+    const fetchWorkflowDetails = async (workflowId) => {
+      try {
+        const r = await fetch(`http://localhost:3001/api/autonomous/workflows/${workflowId}`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+        if (!r.ok) return null;
+        const body = await r.json();
+        return body;
+      } catch (e) {
+        console.warn('Failed to fetch workflow details', e && e.message);
+        return null;
+      }
+    };
   return (
     <div className="boardroom">
       <div className="boardroom-header">

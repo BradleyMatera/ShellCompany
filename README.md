@@ -120,6 +120,15 @@ npm start
 - **Frontend**: http://localhost:3000
 - **API**: http://localhost:3001
 
+## Tests
+
+Run the reconcile integration test (server-side) to validate artifact reconciler behavior:
+
+```bash
+cd server
+npm run test:reconcile
+```
+
 ## 🎯 Usage Examples
 
 ### Basic Workflow Execution

@@ -1945,22 +1945,30 @@ const initializeServer = async () => {
     console.log('📊 Database connection established successfully.');
 
     // Sync database models
-    if (process.env.NODE_ENV === 'development') {
-      try {
+    // Use a safe sync strategy: attempt an in-place alter in development but
+    // fall back to a non-altering sync to avoid destructive DROP/ALTER operations
+    // that can fail when foreign keys exist (SQLite returns SQLITE_CONSTRAINT).
+    try {
+      if (process.env.NODE_ENV === 'development') {
         await sequelize.sync({ alter: true });
-        console.log('📋 Database models synchronized.');
-      } catch (e) {
-        console.warn('⚠️  Sync failed (alter), retrying standard sync:', e.message);
+        console.log('📋 Database models synchronized (alter).');
+      } else {
         await sequelize.sync();
+        console.log('📋 Database models synchronized (safe sync).');
       }
+    } catch (e) {
+      console.warn('⚠️  Model sync (alter) failed, falling back to safe sequelize.sync():', e && e.message);
+      await sequelize.sync();
+      console.log('📋 Database models synchronized (fallback safe sync).');
+    }
 
-      // Best-effort: relax provider enum on connections to avoid CHECK constraints during local dev
-      try {
-        const qi = sequelize.getQueryInterface();
-        await qi.changeColumn('connections', 'provider', { type: DataTypes.STRING, allowNull: false });
-      } catch (e) {
-        // ignore if table doesn't exist yet or driver doesn't support changeColumn
-      }
+    // Best-effort: relax provider enum on connections to avoid CHECK constraints during local dev
+    try {
+      const qi = sequelize.getQueryInterface();
+      await qi.changeColumn('connections', 'provider', { type: DataTypes.STRING, allowNull: false });
+    } catch (e) {
+      // ignore if table doesn't exist yet or driver doesn't support changeColumn
+    }
 
       // Create default admin user if none exists
       const userCount = await User.count();

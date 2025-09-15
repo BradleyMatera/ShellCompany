@@ -74,8 +74,26 @@ async function initializeDatabase() {
     console.log('✅ Database connection established successfully.');
 
     // Sync all models
-    await sequelize.sync({ alter: true });
-    console.log('✅ Database models synchronized.');
+    // NOTE: In development we previously used `alter: true` to try to migrate schema in-place.
+    // That can cause destructive ALTER/DROP operations that fail when foreign key constraints
+    // exist (SQLite will error with SQLITE_CONSTRAINT). For production readiness we should
+    // avoid `alter: true` at runtime and instead run explicit migrations. Here we attempt a
+    // best-effort `alter` in development, but fall back to a safe `sync()` if it fails.
+    try {
+      if (process.env.NODE_ENV === 'development') {
+        await sequelize.sync({ alter: true });
+        console.log('✅ Database models synchronized (alter).');
+      } else {
+        // In non-development environments, do a non-altering sync to avoid runtime schema changes
+        await sequelize.sync();
+        console.log('✅ Database models synchronized (safe sync).');
+      }
+    } catch (err) {
+      console.warn('⚠️  Model sync with alter failed:', err.message);
+      console.warn('⚠️  Falling back to safe sequelize.sync() to avoid destructive schema changes.');
+      await sequelize.sync();
+      console.log('✅ Database models synchronized (fallback safe sync).');
+    }
 
     // Create default user for autonomous agents
     await User.findOrCreate({

@@ -8,9 +8,11 @@ const fs = require('fs').promises;
 const crypto = require('crypto');
 
 class WorkflowOrchestrator {
-  constructor(workspaceRoot, socketio) {
+  constructor(workspaceRoot, socketio, options = {}) {
     this.workspaceRoot = workspaceRoot;
     this.socketio = socketio;
+    this.options = options || {};
+    this.autoStart = this.options.autoStart !== false; // default true
     this.agents = new Map();
     this.workflows = new Map();
     this.taskQueue = [];
@@ -22,18 +24,19 @@ class WorkflowOrchestrator {
     // Initialize autonomous agents with specialized capabilities
     this.initializeAgents();
     
-    // Start workflow processor
-    this.startWorkflowProcessor();
-
-  // Start artifact reconciliation loop for deferred DB persists
-  this.startArtifactReconciler();
+    // Start workflow processor and artifact reconciler if autoStart enabled
+    if (this.autoStart) {
+      this.startWorkflowProcessor();
+      // Start artifact reconciliation loop for deferred DB persists
+      this.startArtifactReconciler();
+    }
     
     console.log('✅ Workflow Orchestrator initialized with artifact lineage tracking');
   }
 
   startArtifactReconciler() {
     // Try to persist pending artifact records every 20 seconds
-    setInterval(async () => {
+    this.artifactReconcilerInterval = setInterval(async () => {
       if (!this.pendingArtifactPersist || this.pendingArtifactPersist.length === 0) return;
       const pending = this.pendingArtifactPersist.slice();
       for (const entry of pending) {
@@ -1060,6 +1063,29 @@ class WorkflowOrchestrator {
       });
     }
     return status;
+  }
+
+  async shutdown() {
+    // Clear intervals started by this orchestrator
+    try {
+      if (this.artifactReconcilerInterval) clearInterval(this.artifactReconcilerInterval);
+      if (this.workflowProcessorInterval) clearInterval(this.workflowProcessorInterval);
+    } catch (e) {
+      // ignore
+    }
+
+    // Stop agent executors if present
+    for (const [name, agent] of this.agents) {
+      try {
+        if (agent && agent.executor && typeof agent.executor.shutdown === 'function') {
+          await agent.executor.shutdown();
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    console.log('✅ WorkflowOrchestrator shutdown complete');
   }
 
   getWorkflowStatus(workflowId) {

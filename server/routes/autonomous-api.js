@@ -1085,6 +1085,108 @@ router.get('/workflows/:workflowId/artifacts', async (req, res) => {
   }
 });
 
+// Get workflow by id (includes artifacts and any dbArtifactId links)
+router.get('/workflows/:workflowId', async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const orchestrator = req.app.locals.orchestrator;
+    if (!orchestrator) return res.status(500).json({ error: 'Orchestrator not available' });
+
+    // Prefer DB row for canonical fields
+    const dbWorkflow = await require('../models').Workflow.findByPk(workflowId).catch(() => null);
+    const memWorkflow = orchestrator.getWorkflowStatus(workflowId) || {};
+
+    const merged = Object.assign({}, memWorkflow, dbWorkflow ? {
+      id: dbWorkflow.id,
+      directive: dbWorkflow.directive,
+      status: dbWorkflow.status,
+      startTime: dbWorkflow.start_time ? dbWorkflow.start_time.getTime() : undefined,
+      endTime: dbWorkflow.end_time ? dbWorkflow.end_time.getTime() : undefined,
+      tasks: dbWorkflow.tasks || memWorkflow.tasks || [],
+      progress: dbWorkflow.progress || memWorkflow.progress || {},
+      artifacts: dbWorkflow.artifacts || memWorkflow.artifacts || []
+    } : memWorkflow);
+
+    res.json({ success: true, workflow: merged });
+  } catch (error) {
+    console.error('❌ Error fetching workflow:', error);
+    res.status(500).json({ error: 'Failed to fetch workflow' });
+  }
+});
+
+// Get artifact details by db id (includes lineage if available)
+router.get('/artifacts/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const models = require('../models');
+    const orchestrator = req.app.locals.orchestrator;
+
+    // Try DB first
+    const dbArtifact = await models.Artifact.findByPk(id).catch(() => null);
+
+    // Merge with in-memory lineage if orchestrator provides it
+    let lineage = null;
+    if (orchestrator && typeof orchestrator.getArtifactWithLineage === 'function') {
+      lineage = orchestrator.getArtifactWithLineage(id);
+    }
+
+    if (!dbArtifact && !lineage) {
+      return res.status(404).json({ error: 'Artifact not found' });
+    }
+
+    res.json({ success: true, artifact: dbArtifact || null, lineage });
+  } catch (error) {
+    console.error('❌ Error fetching artifact:', error);
+    res.status(500).json({ error: 'Failed to fetch artifact' });
+  }
+});
+
+// Stream/download artifact file (secure)
+router.get('/artifacts/:id/file', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const models = require('../models');
+    const orchestrator = req.app.locals.orchestrator;
+
+    // Resolve DB artifact or in-memory lineage
+    let dbArtifact = await models.Artifact.findByPk(id).catch(() => null);
+    let lineage = orchestrator && typeof orchestrator.getArtifactWithLineage === 'function' ? orchestrator.getArtifactWithLineage(id) : null;
+
+    // Prefer absolute path from lineage, then DB path
+    const candidatePath = (lineage && lineage.metadata && lineage.metadata.absolutePath) || (dbArtifact && dbArtifact.path) || null;
+    if (!candidatePath) {
+      return res.status(404).json({ error: 'Artifact file path not available' });
+    }
+
+    // Normalize and ensure path is within agent workspaces directory
+    const workspaceRoot = path.join(__dirname, '..', 'agent-workspaces');
+    const normalized = path.normalize(candidatePath);
+    if (!normalized.startsWith(workspaceRoot)) {
+      // If DB stored a relative path, attempt to resolve under workspaceRoot
+      const resolvedAttempt = path.join(workspaceRoot, normalized);
+      if (!resolvedAttempt.startsWith(workspaceRoot)) {
+        return res.status(403).json({ error: 'Artifact path is not allowed' });
+      }
+    }
+
+    // Try streaming the file
+    try {
+      return res.sendFile(normalized, (err) => {
+        if (err) {
+          console.error('❌ Error sending artifact file:', err);
+          if (!res.headersSent) res.status(404).json({ error: 'File not found' });
+        }
+      });
+    } catch (err) {
+      console.error('❌ Failed to stream artifact file:', err);
+      return res.status(500).json({ error: 'Failed to stream file' });
+    }
+  } catch (error) {
+    console.error('❌ Error in artifact file route:', error);
+    res.status(500).json({ error: 'Failed to fetch artifact file' });
+  }
+});
+
 // Get all artifacts for an agent with lineage  
 router.get('/agents/:agentName/artifacts', async (req, res) => {
   try {
