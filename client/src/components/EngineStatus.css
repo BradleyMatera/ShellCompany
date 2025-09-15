@@ -1,0 +1,190 @@
+.engine-status {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  color: #fff;
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.engine-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #333;
+}
+
+.engine-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.capacity-summary {
+  display: flex;
+  gap: 16px;
+}
+
+.capacity-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.capacity-label {
+  font-size: 11px;
+  color: #888;
+  font-weight: 500;
+}
+
+.capacity-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #22c55e;
+}
+
+.providers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.provider-card {
+  background: #252525;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 12px;
+  transition: all 0.2s ease;
+}
+
+.provider-card:hover {
+  border-color: #555;
+  background: #2a2a2a;
+}
+
+.provider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.provider-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.provider-model {
+  font-size: 12px;
+  color: #888;
+  font-family: 'SF Mono', monospace;
+}
+
+.provider-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.metric-header span:first-child {
+  color: #ccc;
+  font-weight: 500;
+}
+
+.metric-header span:last-child {
+  color: #fff;
+  font-weight: 600;
+}
+
+.metric-bar {
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.metric-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.metric-detail {
+  font-size: 11px;
+  color: #888;
+  font-family: 'SF Mono', monospace;
+}
+
+.provider-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+  font-size: 11px;
+}
+
+.last-response {
+  color: #888;
+}
+
+.error-rate {
+  color: #888;
+}
+
+.engine-status.sidebar {
+  min-height: 300px;
+}
+
+.engine-status.panel {
+  min-height: 200px;
+}
+
+@media (max-width: 768px) {
+  .capacity-summary {
+    gap: 12px;
+  }
+
+  .providers-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .engine-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}

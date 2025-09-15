@@ -1,0 +1,89 @@
+.splash-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 90vh;
+  background: linear-gradient(135deg, #232526 0%, #414345 100%);
+  color: #fff;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.splash-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.splash-header h1 {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: 2px;
+}
+
+.splash-header h2 {
+  font-size: 1.5rem;
+  font-weight: 400;
+  margin-bottom: 1rem;
+  color: #b2bec3;
+}
+
+.splash-highlight {
+  color: #00b894;
+  font-weight: bold;
+}
+
+.splash-btn {
+  display: inline-block;
+  margin-top: 1.5rem;
+  padding: 0.75rem 2rem;
+  background: #00b894;
+  color: #fff;
+  border-radius: 30px;
+  text-decoration: none;
+  font-size: 1.1rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  transition: background 0.2s;
+}
+
+.splash-btn:hover {
+  background: #0984e3;
+}
+
+.splash-features {
+  margin-top: 2rem;
+  text-align: left;
+  max-width: 500px;
+}
+
+.splash-features h3 {
+  font-size: 1.3rem;
+  margin-bottom: 0.5rem;
+  color: #00b894;
+}
+
+.splash-features ul {
+  list-style: none;
+  padding: 0;
+}
+
+.splash-features li {
+  margin-bottom: 0.5rem;
+  padding-left: 1.2em;
+  position: relative;
+}
+
+.splash-features li:before {
+  content: '✔';
+  position: absolute;
+  left: 0;
+  color: #00b894;
+  font-weight: bold;
+}
+
+.splash-footer {
+  margin-top: 3rem;
+  font-size: 0.95rem;
+  color: #b2bec3;
+  text-align: center;
+}

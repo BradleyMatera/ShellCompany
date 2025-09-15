@@ -1,0 +1,93 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.App {
+  height: 100vh;
+  background: #0a0a0a;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.app-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+}
+
+.nav-brand h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.nav-subtitle {
+  font-size: 12px;
+  color: #888;
+  font-weight: 400;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.nav-tab {
+  background: transparent;
+  border: 1px solid #444;
+  color: #ccc;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-tab:hover {
+  border-color: #555;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-tab.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.app-main {
+  flex: 1;
+  overflow: hidden;
+}
+
+.console-panel {
+  padding: 24px;
+  height: 100%;
+}
+
+.console-panel h2 {
+  margin-bottom: 16px;
+  color: #22c55e;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .app-nav {
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .nav-tabs {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}

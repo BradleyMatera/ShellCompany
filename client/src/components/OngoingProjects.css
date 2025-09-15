@@ -1,0 +1,617 @@
+.ongoing-projects {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0a0a0a;
+  color: #fff;
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+}
+
+.projects-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid #333;
+  background: #1a1a1a;
+}
+
+.projects-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.projects-title h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.projects-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.status-indicator {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.status-indicator.connected {
+  color: #22c55e;
+}
+
+.status-indicator.disconnected {
+  color: #ef4444;
+}
+
+.projects-count {
+  color: #888;
+}
+
+.projects-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-select {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.refresh-btn {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.refresh-btn:hover {
+  background: #2563eb;
+}
+
+.projects-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.projects-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: #666;
+}
+
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.projects-empty h3 {
+  margin: 0 0 12px 0;
+  color: #888;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.projects-empty p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  max-width: 400px;
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.project-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.project-card:hover {
+  border-color: #444;
+  background: #1e1e1e;
+}
+
+.project-card.selected {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.project-card.completed {
+  border-left: 4px solid #22c55e;
+}
+
+.project-card.running {
+  border-left: 4px solid #3b82f6;
+}
+
+.project-card.failed {
+  border-left: 4px solid #ef4444;
+}
+
+.project-card.paused {
+  border-left: 4px solid #f59e0b;
+}
+
+.project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.project-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-icon {
+  font-size: 14px;
+}
+
+.status-text {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+}
+
+.project-card.completed .status-text {
+  color: #22c55e;
+}
+
+.project-card.running .status-text {
+  color: #3b82f6;
+}
+
+.project-card.failed .status-text {
+  color: #ef4444;
+}
+
+.project-card.paused .status-text {
+  color: #f59e0b;
+}
+
+.project-id {
+  background: #333;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.project-id code {
+  color: #22c55e;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+}
+
+.project-content {
+  margin-bottom: 16px;
+}
+
+.project-directive {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #fff;
+}
+
+.project-progress {
+  margin-bottom: 16px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #888;
+}
+
+.project-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meta-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.meta-label {
+  color: #888;
+}
+
+.meta-value {
+  color: #fff;
+  font-weight: 500;
+}
+
+.project-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.task-agents {
+  display: flex;
+  gap: 4px;
+}
+
+.agent-chip {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  border: 1px solid #444;
+}
+
+.agent-chip.more {
+  background: #444;
+  color: #888;
+}
+
+.project-details {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 500px;
+  height: 100vh;
+  background: #1a1a1a;
+  border-left: 1px solid #333;
+  z-index: 1000;
+  overflow-y: auto;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.details-header {
+  padding: 24px;
+  border-bottom: 1px solid #333;
+  background: #1e1e1e;
+}
+
+.details-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.details-title h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.project-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn, .close-btn {
+  background: #333;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.action-btn:hover {
+  background: #444;
+}
+
+.close-btn {
+  background: #ef4444;
+}
+
+.close-btn:hover {
+  background: #dc2626;
+}
+
+.workflow-id-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #333;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.workflow-id-display label {
+  color: #888;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.workflow-id-display code {
+  color: #22c55e;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.copy-id-btn {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 0.2s ease;
+}
+
+.copy-id-btn:hover {
+  color: #fff;
+}
+
+.details-content {
+  padding: 24px;
+}
+
+.details-section {
+  margin-bottom: 32px;
+}
+
+.details-section h4 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #333;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.task-row.completed {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.task-row.running {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.task-row.failed {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.task-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.task-info {
+  flex: 1;
+}
+
+.task-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.task-agent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #888;
+}
+
+.agent-avatar {
+  font-size: 14px;
+}
+
+.task-status {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #888;
+}
+
+.task-status.completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.task-status.running {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.task-status.failed {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.artifacts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artifact-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid #333;
+  transition: border-color 0.2s ease;
+}
+
+.artifact-row:hover {
+  border-color: #444;
+}
+
+.artifact-icon {
+  font-size: 20px;
+  width: 32px;
+  display: flex;
+  justify-content: center;
+}
+
+.artifact-info {
+  flex: 1;
+}
+
+.artifact-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.artifact-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #888;
+}
+
+.artifact-agent {
+  color: #22c55e;
+}
+
+.artifact-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.download-btn {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.download-btn:hover {
+  background: #2563eb;
+}
+
+@media (max-width: 768px) {
+  .projects-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .project-details {
+    width: 100%;
+    position: fixed;
+    top: 0;
+    left: 0;
+  }
+  
+  .projects-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .projects-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
