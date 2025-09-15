@@ -1,4 +1,12 @@
 const { v4: uuidv4 } = require('uuid');
+// Consult agent roster to resolve explicit agent mentions and capabilities
+let agentRoster;
+try {
+  agentRoster = require('./agent-roster');
+} catch (e) {
+  console.warn('agent-roster not available in BriefManager:', e.message);
+  agentRoster = null;
+}
 
 class BriefManager {
   constructor() {
@@ -68,6 +76,24 @@ class BriefManager {
       projectType = 'fullstack';
       suggestedAgents = ['Alex', 'Nova', 'Zephyr', 'Pixel', 'Cipher', 'Sage'];
       complexity = 'high';
+    }
+
+    // Detect explicit agent mention in directive (e.g., "have Sage create...")
+    let requestedAgent = null;
+    let agentExplicit = false;
+    if (agentRoster && agentRoster.agentsArray) {
+      for (const a of agentRoster.agentsArray) {
+        const nameLower = (a.name || '').toLowerCase();
+        if (!nameLower) continue;
+        if (lowerDirective.includes(nameLower)) {
+          requestedAgent = a.name;
+          agentExplicit = true;
+          // Move the requested agent to the front of suggestedAgents
+          suggestedAgents = [a.name, ...suggestedAgents.filter(s => s !== a.name)];
+          knownFacts.push(`Requested agent: ${a.name}`);
+          break;
+        }
+      }
     }
 
     // Extract known facts from directive
@@ -145,6 +171,39 @@ class BriefManager {
       'Target user base size/characteristics'
     ];
 
+    // Map project types to required skills for a quick capability check
+    const projectTypeRequiredSkills = {
+      website: ['react', 'frontend', 'html', 'css'],
+      dashboard: ['react', 'ui-ux-design', 'data-visualization'],
+      backend: ['nodejs', 'api-design', 'databases'],
+      fullstack: ['react', 'nodejs', 'database']
+    };
+
+    // If an explicit agent was requested, validate capabilities and surface reassignment options if needed
+    if (agentExplicit && requestedAgent && agentRoster) {
+      const agentObj = agentRoster.agentsArray.find(x => x.name === requestedAgent);
+      if (agentObj) {
+        const required = projectTypeRequiredSkills[projectType] || [];
+        const missingSkills = required.filter(rs => !agentObj.skills.some(s => s.toLowerCase().includes(rs)));
+        if (missingSkills.length > 0) {
+          // Add a high-priority clarifying question proposing reassignment / approval
+          clarifyingQuestions.unshift({
+            id: 'agent_mismatch',
+            question: `You requested ${requestedAgent}, but they may not have the required skills (${missingSkills.join(', ')}). Do you want to assign ${requestedAgent} anyway, or reassign to a recommended agent?`,
+            type: 'multiple-choice',
+            options: [`Assign ${requestedAgent} anyway`, `Reassign to ${suggestedAgents.filter(s => s !== requestedAgent).slice(0,2).join(', ')}`, 'Let system choose best-fit'],
+            priority: 'high',
+            impact: 'Determines executor of artifact creation'
+          });
+
+          assumptions.push(`Requested agent ${requestedAgent} may not have all required skills for a ${projectType} task`);
+          unknowns.push('Agent availability and skills match');
+        } else {
+          knownFacts.push(`Requested agent ${requestedAgent} appears capable for project type ${projectType}`);
+        }
+      }
+    }
+
     // Generate smart clarifying questions
     clarifyingQuestions = [
       {
@@ -207,6 +266,21 @@ class BriefManager {
       impact: 'Defines acceptance criteria and quality standards'
     });
 
+    // If directive references creating a document but no explicit filename or format, ask for filename/format
+    const mentionsCreate = lowerDirective.includes('create') || lowerDirective.includes('make') || lowerDirective.includes('put it in');
+    const mentionsMd = lowerDirective.includes('.md') || lowerDirective.includes('markdown') || lowerDirective.includes('md document');
+    const filenameMentioned = /\b\w+\.md\b/.test(directive);
+    if (mentionsCreate && !filenameMentioned && !mentionsMd) {
+      clarifyingQuestions.push({
+        id: 'filename',
+        question: 'What would you like the filename and format to be (e.g., about-me.md)?',
+        type: 'text',
+        placeholder: 'e.g., about-me.md',
+        priority: 'high',
+        impact: 'Determines where the artifact will be saved and its format'
+      });
+    }
+
     // Constraints question
     clarifyingQuestions.push({
       id: 'constraints',
@@ -225,6 +299,8 @@ class BriefManager {
       clarifyingQuestions,
       complexity,
       suggestedAgents,
+      requestedAgent: requestedAgent || null,
+      agentExplicit: agentExplicit,
       analysisConfidence: 0.8
     };
   }
@@ -290,6 +366,11 @@ class BriefManager {
       // Context
       knownFacts: brief.knownFacts,
       assumptions: brief.assumptions,
+  // Agent assignment metadata (preserve explicit requests)
+  requestedAgent: brief.analysis.requestedAgent || null,
+  agentExplicit: !!brief.analysis.agentExplicit,
+  // Filename/format hint if provided by the user
+  filename: this.extractResponse(responses, 'filename') || null,
       
       // Metadata
       createdAt: brief.timestamp,

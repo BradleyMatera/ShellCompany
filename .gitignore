@@ -232,3 +232,8 @@ pnpm-lock.yaml
 # Client build
 client/build/
 client/dist/
+
+
+
+
+.claude.code-workspace

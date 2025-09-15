@@ -902,7 +902,66 @@ router.post('/brief/:briefId/create-workflow', async (req, res) => {
     }
 
     console.log(`🚀 [BRIEF:${briefId}] Creating workflow from approved brief`);
-    
+
+    // Approval gating: if the brief analysis produced a high-priority
+    // 'agent_mismatch' clarifying question, ensure the user answered it
+    // and apply their choice to the completed brief before creating the workflow.
+    try {
+      const clarifiers = brief.clarifyingQuestions || (brief.analysis && brief.analysis.clarifyingQuestions) || [];
+      const agentMismatch = clarifiers.find(q => q && q.id === 'agent_mismatch');
+
+      // Determine initial requested agent from analysis if present
+      const initialRequested = (brief.analysis && brief.analysis.requestedAgent) || null;
+
+      if (agentMismatch) {
+        // Require response before proceeding
+        if (!brief.responses || !brief.responses.has('agent_mismatch')) {
+          return res.status(400).json({
+            error: 'agent_mismatch_unresolved',
+            message: 'The brief includes a high-priority agent mismatch question. Please answer the clarifying question before creating a workflow.',
+            question: agentMismatch
+          });
+        }
+
+        const respEntry = brief.responses.get('agent_mismatch');
+        const resp = respEntry && respEntry.response ? String(respEntry.response) : '';
+
+        // Apply user's selection to the completed brief context
+        if (!brief.completedBrief) brief.completedBrief = {};
+        // Default to initial requested agent
+        brief.completedBrief.requestedAgent = initialRequested;
+        brief.completedBrief.agentExplicit = !!initialRequested;
+
+        if (/^Assign\s+/i.test(resp)) {
+          // Keep the originally requested agent
+          // no-op, already set
+        } else if (/^Reassign to\s+/i.test(resp)) {
+          // Expect format: 'Reassign to Name1, Name2' -> pick first recommended agent
+          const m = resp.match(/^Reassign to\s+(.+)$/i);
+          if (m && m[1]) {
+            const candidates = m[1].split(',').map(s => s.trim()).filter(Boolean);
+            if (candidates.length > 0) {
+              brief.completedBrief.requestedAgent = candidates[0];
+              brief.completedBrief.agentExplicit = true;
+            }
+          }
+        } else if (/let system choose/i.test(resp)) {
+          // Clear explicit request and allow system to select
+          brief.completedBrief.requestedAgent = null;
+          brief.completedBrief.agentExplicit = false;
+        }
+      } else {
+        // No agent_mismatch clarifier; propagate any requestedAgent from analysis
+        if (!brief.completedBrief) brief.completedBrief = {};
+        const initialRequested = (brief.analysis && brief.analysis.requestedAgent) || null;
+        brief.completedBrief.requestedAgent = initialRequested;
+        brief.completedBrief.agentExplicit = !!initialRequested;
+      }
+    } catch (e) {
+      console.warn('[BRIEF CREATE] Warning while applying agent mismatch gating:', e && e.message);
+      // Fall through - do not block workflow creation on gating errors
+    }
+
     // Enhanced workflow creation with brief context
     const result = await orchestrator.createWorkflow(
       brief.completedBrief.directive,
@@ -1126,6 +1185,52 @@ router.post('/workflow', async (req, res) => {
     if (briefId) {
       const brief = briefManager.getBrief(briefId);
       if (brief && brief.completedBrief) {
+        // Apply gating similar to /brief/:briefId/create-workflow for agent_mismatch clarifier
+        try {
+          const clarifiers = brief.clarifyingQuestions || (brief.analysis && brief.analysis.clarifyingQuestions) || [];
+          const agentMismatch = clarifiers.find(q => q && q.id === 'agent_mismatch');
+
+          // If unresolved high-priority clarifier present, require response
+          if (agentMismatch && (!brief.responses || !brief.responses.has('agent_mismatch'))) {
+            return res.status(400).json({
+              error: 'agent_mismatch_unresolved',
+              message: 'The brief includes a high-priority agent mismatch question. Please answer the clarifying question before creating a workflow.',
+              question: agentMismatch
+            });
+          }
+
+          // Apply response if present
+          let initialRequested = (brief.analysis && brief.analysis.requestedAgent) || null;
+          if (!brief.completedBrief) brief.completedBrief = {};
+          brief.completedBrief.requestedAgent = initialRequested;
+          brief.completedBrief.agentExplicit = !!initialRequested;
+
+          if (brief.responses && brief.responses.has('agent_mismatch')) {
+            const respEntry = brief.responses.get('agent_mismatch');
+            const resp = respEntry && respEntry.response ? String(respEntry.response) : '';
+
+            if (/^Assign\s+/i.test(resp)) {
+              // keep
+            } else if (/^Reassign to\s+/i.test(resp)) {
+              const m = resp.match(/^Reassign to\s+(.+)$/i);
+              if (m && m[1]) {
+                const candidates = m[1].split(',').map(s => s.trim()).filter(Boolean);
+                if (candidates.length > 0) {
+                  brief.completedBrief.requestedAgent = candidates[0];
+                  brief.completedBrief.agentExplicit = true;
+                }
+              }
+            } else if (/let system choose/i.test(resp)) {
+              brief.completedBrief.requestedAgent = null;
+              brief.completedBrief.agentExplicit = false;
+            }
+          }
+
+        } catch (e) {
+          console.warn('[LEGACY WORKFLOW CREATE] Warning while applying agent mismatch gating:', e && e.message);
+          // fall through
+        }
+
         briefContext = brief.completedBrief;
         console.log(`🚀 Creating workflow with brief context: ${briefId}`);
       }

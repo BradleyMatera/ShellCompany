@@ -11,12 +11,15 @@ const BoardRoom = ({ state, setState }) => {
   // New state for real workflow tracking
   const [currentWorkflow, setCurrentWorkflow] = useState(null);
   const [workflowTasks, setWorkflowTasks] = useState([]);
+  const [pendingClarifier, setPendingClarifier] = useState(null);
+  const [clarifierAnswer, setClarifierAnswer] = useState('Assign requested agent');
 
   const messages = state.messages;
   const projectBrief = state.projectBrief;
   const decisions = state.decisions;
   const risks = state.risks;
   const milestones = state.milestones;
+  // (milestones may be displayed elsewhere) - no-op to avoid lint noise
 
   const agents = [
     {
@@ -149,7 +152,7 @@ const BoardRoom = ({ state, setState }) => {
     return () => {
       newSocket.close();
     };
-  }, []);
+  }, [setState]);
 
   useEffect(() => {
     scrollToBottom();
@@ -194,6 +197,15 @@ const BoardRoom = ({ state, setState }) => {
       console.log('📥 Response received:', response.status, response.statusText);
       
       if (!response.ok) {
+        // If the brief/legacy route requires clarifier resolution, server returns 400 with agent_mismatch_unresolved
+        if (response.status === 400) {
+          const body = await response.json().catch(() => null);
+          if (body && body.error === 'agent_mismatch_unresolved' && body.question) {
+            console.warn('Clarifier required:', body.question);
+            setPendingClarifier({ question: body.question, originalDirective: inputValue, briefId: body.question && body.question.briefId ? body.question.briefId : null });
+            return;
+          }
+        }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
@@ -241,6 +253,50 @@ const BoardRoom = ({ state, setState }) => {
     }
 
     setInputValue('');
+  };
+
+  // Submit clarifier response and then retry the workflow creation
+  const submitClarifier = async () => {
+    if (!pendingClarifier) return;
+    try {
+      // Post response to brief respond API
+      const briefId = pendingClarifier.question && pendingClarifier.question.briefId ? pendingClarifier.question.briefId : pendingClarifier.question && pendingClarifier.question.meta && pendingClarifier.question.meta.briefId;
+      // The server's question payload may include ids; fallback to asking the analyze endpoint if briefId is missing
+      if (!briefId) {
+        console.warn('No briefId available in clarifier payload; cannot submit response. Please use the Brief UI to answer clarifiers.');
+        return;
+      }
+
+      const resp = {
+        questionId: pendingClarifier.question.id,
+        response: clarifierAnswer
+      };
+
+      const r = await fetch(`http://localhost:3001/api/autonomous/brief/${briefId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(resp)
+      });
+
+      if (!r.ok) {
+        const body = await r.json().catch(() => null);
+        console.error('Failed to submit clarifier response', r.status, body);
+        return;
+      }
+
+      // Clear clarifier and retry sending the original directive
+      setPendingClarifier(null);
+      setClarifierAnswer('Assign requested agent');
+      // Retry original submission
+      setTimeout(() => {
+        setInputValue(pendingClarifier.originalDirective);
+        handleSendMessage();
+      }, 200);
+
+    } catch (e) {
+      console.error('Error submitting clarifier response', e && e.message);
+    }
   };
 
   const handleApprove = () => {
@@ -530,6 +586,23 @@ const BoardRoom = ({ state, setState }) => {
             </button>
           </div>
 
+          {pendingClarifier && (
+            <div className="clarifier-panel">
+              <h5>Clarifying Question</h5>
+              <p className="clarifier-text">{pendingClarifier.question && pendingClarifier.question.text ? pendingClarifier.question.text : 'Please confirm agent assignment.'}</p>
+              <div className="clarifier-controls">
+                <select value={clarifierAnswer} onChange={(e) => setClarifierAnswer(e.target.value)}>
+                  <option>Assign requested agent</option>
+                  <option>Reassign to Alex</option>
+                  <option>Reassign to Nova</option>
+                  <option>Let system choose</option>
+                </select>
+                <button className="clarifier-submit" onClick={submitClarifier}>Submit Clarifier</button>
+                <button className="clarifier-cancel" onClick={() => setPendingClarifier(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
+
           <div className="action-buttons">
             <button onClick={handleApprove} className="approve-btn" disabled={!isConnected}>
               ✅ Approve
@@ -597,18 +670,19 @@ const BoardRoom = ({ state, setState }) => {
           <div className="sidebar-section">
             <h4>Next Milestones</h4>
             <div className="milestones-list">
-              <div className="milestone-item">
-                <div className="milestone-title">Content Strategy</div>
-                <div className="milestone-eta">2 hours</div>
-              </div>
-              <div className="milestone-item">
-                <div className="milestone-title">Design Approval</div>
-                <div className="milestone-eta">4 hours</div>
-              </div>
-              <div className="milestone-item">
-                <div className="milestone-title">MVP Deploy</div>
-                <div className="milestone-eta">1 day</div>
-              </div>
+              {Array.isArray(milestones) && milestones.length > 0 ? (
+                milestones.map(ms => (
+                  <div key={ms.id || ms.title} className="milestone-item">
+                    <div className="milestone-title">{ms.title}</div>
+                    <div className="milestone-eta">{ms.eta || ms.duration || 'TBD'}</div>
+                  </div>
+                ))
+              ) : (
+                <div className="milestone-item">
+                  <div className="milestone-title">Content Strategy</div>
+                  <div className="milestone-eta">2 hours</div>
+                </div>
+              )}
             </div>
           </div>
         </div>

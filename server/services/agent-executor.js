@@ -153,12 +153,19 @@ class AgentExecutor {
       await fs.mkdir(dirPath, { recursive: true });
       await fs.writeFile(fullPath, content, 'utf8');
 
+      // Compute SHA-256 checksum for integrity and lineage
+      const crypto = require('crypto');
+      const buf = Buffer.from(content, 'utf8');
+      const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+
       const artifact = {
         id: uuidv4(),
         type: 'file',
         path: filePath,
         fullPath,
-        size: Buffer.byteLength(content, 'utf8'),
+        absolutePath: fullPath,
+        size: buf.length,
+        sha256,
         createdAt: new Date().toISOString(),
         agentName: this.agentName
       };
@@ -247,6 +254,15 @@ class AgentExecutor {
 
     try {
       const content = await fs.readFile(artifact.fullPath, 'utf8');
+      // Ensure checksum present
+      if (!artifact.sha256) {
+        const crypto = require('crypto');
+        artifact.sha256 = crypto.createHash('sha256').update(Buffer.from(content, 'utf8')).digest('hex');
+      }
+
+      // Ensure absolutePath present
+      if (!artifact.absolutePath) artifact.absolutePath = artifact.fullPath;
+
       return {
         ...artifact,
         content
