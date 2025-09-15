@@ -12,6 +12,18 @@ const agentEngine = require('./services/agent-engine');
 // Import console logger FIRST to capture all logs
 const consoleLogger = require('./services/console-logger');
 
+// Import AI workers service
+const aiWorkers = require('./services/ai-workers');
+
+// Import health monitoring
+const healthMonitor = require('./services/health-monitor');
+
+// Import workspace manager
+const workspaceManager = require('./services/workspace-manager');
+
+// Import project manager
+const projectManager = require('./services/project-manager');
+
 // Import autonomous agent system
 const { initializeDatabase } = require('./models');
 const { router: autonomousRouter, initializeWebSocket } = require('./routes/autonomous-api');
@@ -33,6 +45,11 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.use('/api/agents/*/files/*', express.text({ type: '*/*' }));
+app.use('/api/projects/*/files/*', express.text({ type: '*/*' }));
+
+// Add health monitoring middleware (disabled for now)
+// app.use(healthMonitor.requestTracker());
 
 // Enhanced HTTP request logging with timing and status codes
 app.use((req, res, next) => {
@@ -52,9 +69,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check
+// Health check endpoints
 app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString(), uptime: process.uptime(), version: '1.0.0' });
+  const health = healthMonitor.getHealthStatus();
+  res.status(health.status === 'critical' ? 503 : 200).json(health);
+});
+
+app.get('/metrics', (req, res) => {
+  res.json(healthMonitor.getDetailedMetrics());
 });
 
 // Simple root handlers
@@ -342,77 +364,15 @@ app.post('/api/engine/ping', async (req, res) => {
   }
 });
 
-// Agents API - Real agent data instead of system processes
+// Agents API - Real AI worker data from integrated configuration
 app.get('/agents', async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
-  
+
   try {
-    const agents = [
-      {
-        id: 'alex',
-        name: 'Alex',
-        role: 'Project Manager',
-        status: 'active',
-        pid: process.pid + 1,
-        cwd: process.cwd(),
-        queue: Math.floor(Math.random() * 3),
-        lastHeartbeat: new Date().toISOString(),
-        capabilities: ['planning', 'coordination', 'risk-management'],
-        currentTask: null
-      },
-      {
-        id: 'nova',
-        name: 'Nova',
-        role: 'Frontend Developer',
-        status: 'busy',
-        pid: process.pid + 2,
-        cwd: process.cwd() + '/client',
-        queue: Math.floor(Math.random() * 5),
-        lastHeartbeat: new Date().toISOString(),
-        capabilities: ['react', 'typescript', 'ui-design'],
-        currentTask: 'Building responsive dashboard components'
-      },
-      {
-        id: 'zephyr',
-        name: 'Zephyr',
-        role: 'Backend Developer',
-        status: 'active',
-        pid: process.pid + 3,
-        cwd: process.cwd() + '/server',
-        queue: Math.floor(Math.random() * 4),
-        lastHeartbeat: new Date().toISOString(),
-        capabilities: ['nodejs', 'apis', 'databases'],
-        currentTask: null
-      },
-      {
-        id: 'cipher',
-        name: 'Cipher',
-        role: 'Security Engineer',
-        status: 'idle',
-        pid: process.pid + 4,
-        cwd: process.cwd(),
-        queue: 0,
-        lastHeartbeat: new Date().toISOString(),
-        capabilities: ['security', 'authentication', 'compliance'],
-        currentTask: null
-      },
-      {
-        id: 'sage',
-        name: 'Sage',
-        role: 'DevOps Engineer',
-        status: 'active',
-        pid: process.pid + 5,
-        cwd: process.cwd(),
-        queue: Math.floor(Math.random() * 2),
-        lastHeartbeat: new Date().toISOString(),
-        capabilities: ['deployment', 'infrastructure', 'monitoring'],
-        currentTask: 'Monitoring system performance'
-      }
-    ];
-    
+    const agents = aiWorkers.getWorkers();
     res.json(agents);
   } catch (error) {
-    console.error('Failed to fetch agents:', error);
+    console.error('Failed to fetch AI workers:', error);
     res.json([]);
   }
 });
@@ -640,34 +600,9 @@ app.get('/api/autonomous/workflows/:workflowId/artifacts/:artifactId/download', 
 app.get('/api/agents/:agentName/environment', async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   const { agentName } = req.params;
-  
+
   try {
-    const fs = require('fs');
-    const path = require('path');
-    const agentWorkspace = path.join(__dirname, 'agent-workspaces', `${agentName.toLowerCase()}-workspace`);
-    
-    if (!fs.existsSync(agentWorkspace)) {
-      return res.status(404).json({ error: 'Agent workspace not found' });
-    }
-
-    // Get workspace contents
-    const files = fs.readdirSync(agentWorkspace, { withFileTypes: true });
-    const environment = {
-      agentName,
-      workspacePath: agentWorkspace,
-      files: files.map(file => {
-        const filePath = path.join(agentWorkspace, file.name);
-        const stats = fs.statSync(filePath);
-        return {
-          name: file.name,
-          type: file.isDirectory() ? 'directory' : 'file',
-          size: stats.size,
-          modified: stats.mtime.toISOString(),
-          path: filePath
-        };
-      })
-    };
-
+    const environment = await workspaceManager.getAgentEnvironment(agentName.toLowerCase());
     res.json({ environment });
   } catch (error) {
     console.error('Failed to fetch agent environment:', error);
@@ -678,31 +613,17 @@ app.get('/api/agents/:agentName/environment', async (req, res) => {
 // Agent file access endpoints
 app.get('/api/agents/:agentName/files/:filePath(*)', async (req, res) => {
   const { agentName, filePath } = req.params;
-  
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const agentWorkspace = path.join(__dirname, 'agent-workspaces', `${agentName.toLowerCase()}-workspace`);
-    const fullPath = path.join(agentWorkspace, filePath || '');
-    
-    // Security: ensure path is within agent workspace
-    if (!fullPath.startsWith(agentWorkspace)) {
-      return res.status(403).send('Access denied');
-    }
 
-    if (!fs.existsSync(fullPath)) {
+  try {
+    const content = await workspaceManager.getFileContent(agentName.toLowerCase(), filePath || '');
+    res.send(content);
+  } catch (error) {
+    if (error.message === 'File not found') {
       return res.status(404).send('File not found');
     }
-
-    const stats = fs.statSync(fullPath);
-    if (stats.isDirectory()) {
-      return res.status(400).send('Path is a directory');
+    if (error.message.includes('Access denied')) {
+      return res.status(403).send('Access denied');
     }
-
-    const content = fs.readFileSync(fullPath, 'utf8');
-    res.send(content);
-
-  } catch (error) {
     console.error('Failed to read file:', error);
     res.status(500).send('Failed to read file');
   }
@@ -711,37 +632,137 @@ app.get('/api/agents/:agentName/files/:filePath(*)', async (req, res) => {
 app.put('/api/agents/:agentName/files/:filePath(*)', async (req, res) => {
   const { agentName, filePath } = req.params;
   const content = req.body;
-  
+
   try {
-    const fs = require('fs');
-    const path = require('path');
-    const agentWorkspace = path.join(__dirname, 'agent-workspaces', `${agentName.toLowerCase()}-workspace`);
-    const fullPath = path.join(agentWorkspace, filePath || '');
-    
-    // Security: ensure path is within agent workspace
-    if (!fullPath.startsWith(agentWorkspace)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    await workspaceManager.saveFileContent(agentName.toLowerCase(), filePath || '', content);
 
-    // Create directory if it doesn't exist
-    const dir = path.dirname(fullPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    fs.writeFileSync(fullPath, content, 'utf8');
-    
     console.log(`[AGENT-ENV] File saved: ${filePath} by agent ${agentName}`);
-    
-    res.json({ 
+
+    res.json({
       message: 'File saved successfully',
       path: filePath,
       size: Buffer.byteLength(content, 'utf8')
     });
-
   } catch (error) {
+    if (error.message.includes('Access denied')) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     console.error('Failed to save file:', error);
     res.status(500).json({ error: 'Failed to save file' });
+  }
+});
+
+// PROJECT MANAGEMENT API - Real project workspace management
+app.get('/api/projects', async (req, res) => {
+  try {
+    const workspaces = await projectManager.getProjectWorkspaces();
+    const stats = await projectManager.getProjectStats();
+
+    res.json({
+      workspaces,
+      stats,
+      total: workspaces.reduce((sum, w) => sum + w.projects.length, 0)
+    });
+  } catch (error) {
+    console.error('Failed to get project workspaces:', error);
+    res.status(500).json({ error: 'Failed to fetch projects' });
+  }
+});
+
+app.get('/api/projects/:agentName/:projectName', async (req, res) => {
+  const { agentName, projectName } = req.params;
+
+  try {
+    const workspaces = await projectManager.getProjectWorkspaces();
+    const workspace = workspaces.find(w => w.agent === agentName);
+    const project = workspace?.projects.find(p => p.name === projectName);
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    res.json({ project });
+  } catch (error) {
+    console.error('Failed to get project details:', error);
+    res.status(500).json({ error: 'Failed to fetch project details' });
+  }
+});
+
+app.get('/api/projects/:agentName/:projectName/files/:filePath(*)', async (req, res) => {
+  const { agentName, projectName, filePath } = req.params;
+
+  try {
+    const content = await projectManager.getProjectContent(agentName, projectName, filePath || '');
+    res.send(content);
+  } catch (error) {
+    if (error.message === 'File not found') {
+      return res.status(404).send('File not found');
+    }
+    if (error.message.includes('Access denied')) {
+      return res.status(403).send('Access denied');
+    }
+    console.error('Failed to read project file:', error);
+    res.status(500).send('Failed to read file');
+  }
+});
+
+app.put('/api/projects/:agentName/:projectName/files/:filePath(*)', async (req, res) => {
+  const { agentName, projectName, filePath } = req.params;
+  const content = req.body;
+
+  try {
+    await projectManager.saveProjectContent(agentName, projectName, filePath || '', content);
+
+    console.log(`[PROJECT] File saved: ${filePath} in ${agentName}/${projectName}`);
+
+    res.json({
+      message: 'File saved successfully',
+      path: filePath,
+      size: Buffer.byteLength(content, 'utf8')
+    });
+  } catch (error) {
+    if (error.message.includes('Access denied')) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    console.error('Failed to save project file:', error);
+    res.status(500).json({ error: 'Failed to save file' });
+  }
+});
+
+app.post('/api/projects/:agentName/:projectName/commands', async (req, res) => {
+  const { agentName, projectName } = req.params;
+  const { command } = req.body;
+
+  try {
+    const result = await projectManager.runProjectCommand(agentName, projectName, command);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/projects/:agentName/:projectName/clone', async (req, res) => {
+  const { agentName, projectName } = req.params;
+  const { newProjectName } = req.body;
+
+  try {
+    await projectManager.cloneProject(agentName, projectName, newProjectName);
+    res.json({ message: 'Project cloned successfully', newProject: newProjectName });
+  } catch (error) {
+    console.error('Failed to clone project:', error);
+    res.status(500).json({ error: 'Failed to clone project' });
+  }
+});
+
+app.delete('/api/projects/:agentName/:projectName', async (req, res) => {
+  const { agentName, projectName } = req.params;
+
+  try {
+    await projectManager.deleteProject(agentName, projectName);
+    res.json({ message: 'Project deleted successfully' });
+  } catch (error) {
+    console.error('Failed to delete project:', error);
+    res.status(500).json({ error: 'Failed to delete project' });
   }
 });
 
@@ -1033,76 +1054,63 @@ app.get('/api/workers', async (req, res) => {
 // REAL AUTONOMOUS AGENTS STATUS API
 app.get('/api/agents', async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
-  
+
   try {
-    // Return the real agent data directly - same format as /agents endpoint
-    const agents = [
-      {
-        id: 'alex',
-        name: 'Alex',
-        role: 'Project Manager',
-        status: 'active',
-        specializations: ['planning', 'coordination', 'risk-management'],
-        currentTask: null,
-        queue: Math.floor(Math.random() * 3),
-        lastHeartbeat: new Date().toISOString()
-      },
-      {
-        id: 'nova',
-        name: 'Nova',
-        role: 'Frontend Developer',
-        status: 'busy',
-        specializations: ['react', 'typescript', 'ui-design'],
-        currentTask: 'Building responsive dashboard components',
-        queue: Math.floor(Math.random() * 5),
-        lastHeartbeat: new Date().toISOString()
-      },
-      {
-        id: 'pixel',
-        name: 'Pixel',
-        role: 'UI/UX Designer',
-        status: 'active',
-        specializations: ['design', 'user-experience', 'prototyping'],
-        currentTask: 'Designing agent interface mockups',
-        queue: Math.floor(Math.random() * 2),
-        lastHeartbeat: new Date().toISOString()
-      },
-      {
-        id: 'zephyr',
-        name: 'Zephyr',
-        role: 'Backend Developer',
-        status: 'idle',
-        specializations: ['nodejs', 'apis', 'databases'],
-        currentTask: null,
-        queue: 0,
-        lastHeartbeat: new Date().toISOString()
-      },
-      {
-        id: 'cipher',
-        name: 'Cipher',
-        role: 'Security Engineer',
-        status: 'active',
-        specializations: ['security', 'authentication', 'compliance'],
-        currentTask: 'Security audit of API endpoints',
-        queue: Math.floor(Math.random() * 2),
-        lastHeartbeat: new Date().toISOString()
-      },
-      {
-        id: 'sage',
-        name: 'Sage',
-        role: 'DevOps Engineer',
-        status: 'busy',
-        specializations: ['deployment', 'infrastructure', 'monitoring'],
-        currentTask: 'Monitoring system performance',
-        queue: Math.floor(Math.random() * 3),
-        lastHeartbeat: new Date().toISOString()
-      }
-    ];
-    
+    const agents = aiWorkers.getWorkers();
     res.json({ agents });
   } catch (error) {
-    console.error('Failed to fetch agents:', error);
+    console.error('Failed to fetch AI workers:', error);
     res.json({ agents: [] });
+  }
+});
+
+// Individual agent endpoint
+app.get('/api/agents/:agentId', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+
+  try {
+    const agent = aiWorkers.getWorker(req.params.agentId);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    res.json({ agent });
+  } catch (error) {
+    console.error('Failed to fetch agent:', error);
+    res.status(500).json({ error: 'Failed to fetch agent' });
+  }
+});
+
+// AI Project information
+app.get('/api/ai-project', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+
+  try {
+    const projectInfo = aiWorkers.getProjectInfo();
+    const teamStructure = aiWorkers.getTeamStructure();
+    const workers = aiWorkers.getWorkers();
+
+    res.json({
+      project: projectInfo,
+      team: teamStructure,
+      workers: workers.length,
+      activeWorkers: workers.filter(w => w.status === 'active' || w.status === 'busy').length
+    });
+  } catch (error) {
+    console.error('Failed to fetch AI project info:', error);
+    res.json({ project: null, team: null, workers: 0, activeWorkers: 0 });
+  }
+});
+
+// AI Tasks endpoint
+app.get('/api/ai-tasks', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+
+  try {
+    const tasks = aiWorkers.getTasks();
+    res.json(tasks);
+  } catch (error) {
+    console.error('Failed to fetch AI tasks:', error);
+    res.json({ tasks: [] });
   }
 });
 

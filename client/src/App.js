@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 import './components/BoardRoom.css';
 import BoardRoom from './components/BoardRoom';
@@ -8,10 +8,12 @@ import Console from './components/Console';
 import Workers from './components/Workers';
 import OngoingProjects from './components/OngoingProjects';
 import AgentEnvironment from './components/AgentEnvironment';
+import AIProject from './components/AIProject';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('splash');
+  const [activeTab, setActiveTab] = useState('ai-project');
   const [selectedAgent, setSelectedAgent] = useState(null); // For agent environment view
+  const [agents, setAgents] = useState([]); // Real agents from API
   const [boardRoomState, setBoardRoomState] = useState({
     messages: [],
     projectBrief: null,
@@ -30,57 +32,24 @@ function App() {
     setActiveTab('agent-environment');
   };
 
-  const agents = [
-    {
-      name: 'Alex',
-      role: 'Project Manager',
-      avatar: '👨‍💼',
-      status: 'available',
-      specialty: ['planning', 'coordination', 'risk-management']
-    },
-    {
-      name: 'Ivy',
-      role: 'Tech Writer',
-      avatar: '✍️',
-      status: 'available',
-      specialty: ['documentation', 'content', 'communication']
-    },
-    {
-      name: 'Pixel',
-      role: 'Designer',
-      avatar: '🎨',
-      status: 'available',
-      specialty: ['ui-design', 'branding', 'user-experience']
-    },
-    {
-      name: 'Nova',
-      role: 'Frontend Developer',
-      avatar: '⚛️',
-      status: 'busy',
-      specialty: ['react', 'typescript', 'frontend']
-    },
-    {
-      name: 'Zephyr',
-      role: 'Backend Developer',
-      avatar: '🔧',
-      status: 'available',
-      specialty: ['apis', 'databases', 'backend']
-    },
-    {
-      name: 'Cipher',
-      role: 'Security Engineer',
-      avatar: '🔒',
-      status: 'available',
-      specialty: ['security', 'authentication', 'compliance']
-    },
-    {
-      name: 'Sage',
-      role: 'DevOps Engineer',
-      avatar: '🚀',
-      status: 'available',
-      specialty: ['deployment', 'infrastructure', 'monitoring']
-    }
-  ];
+  // Fetch real agents from API
+  useEffect(() => {
+    const fetchAgents = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/api/agents');
+        const data = await response.json();
+        setAgents(data.agents || []);
+      } catch (error) {
+        console.error('Failed to fetch agents:', error);
+        setAgents([]);
+      }
+    };
+
+    fetchAgents();
+    // Refresh agents every 30 seconds
+    const interval = setInterval(fetchAgents, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="App">
@@ -120,6 +89,12 @@ function App() {
           >
             📂 Ongoing Projects
           </button>
+          <button
+            className={`nav-tab ${activeTab === 'ai-project' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ai-project')}
+          >
+            🤖 AI Project
+          </button>
         </div>
         <div className="agent-status">
           {agents.map(agent => (
@@ -156,6 +131,7 @@ function App() {
         )}
         {activeTab === 'workers' && <Workers />}
         {activeTab === 'projects' && <OngoingProjects />}
+        {activeTab === 'ai-project' && <AIProject />}
         {activeTab === 'agent-environment' && selectedAgent && (
           <AgentEnvironment 
             agent={selectedAgent}

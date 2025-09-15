@@ -1,0 +1,158 @@
+{
+  "workers": [
+    {
+      "id": "nova",
+      "name": "Nova",
+      "role": "Frontend Specialist",
+      "avatar": "🎨",
+      "specialties": [
+        "react",
+        "ui/ux",
+        "styling",
+        "responsive-design"
+      ],
+      "color": "#6366f1",
+      "responsibilities": [
+        "User interface development and optimization",
+        "Component architecture and reusability",
+        "Mobile responsiveness and accessibility",
+        "Frontend performance optimization"
+      ],
+      "kpis": [
+        "Component completion rate",
+        "UI/UX improvements implemented",
+        "Mobile performance score",
+        "Accessibility compliance"
+      ]
+    },
+    {
+      "id": "zephyr",
+      "name": "Zephyr",
+      "role": "Features Engineer",
+      "avatar": "⚡",
+      "specialties": [
+        "backend",
+        "api",
+        "database",
+        "optimization"
+      ],
+      "color": "#6366f1",
+      "responsibilities": [
+        "Project tasks and development work",
+        "Code quality and best practices",
+        "Team collaboration and communication",
+        "Continuous learning and improvement"
+      ],
+      "kpis": [
+        "Task completion rate",
+        "Code quality score",
+        "Team collaboration effectiveness",
+        "Problem resolution time"
+      ]
+    },
+    {
+      "id": "alex",
+      "name": "Alex",
+      "role": "Project Manager",
+      "avatar": "🏢",
+      "specialties": [
+        "coordination",
+        "planning",
+        "documentation"
+      ],
+      "color": "#6366f1",
+      "responsibilities": [
+        "Project planning and task breakdown",
+        "Team coordination and resource allocation",
+        "Progress monitoring and risk management",
+        "Stakeholder communication and reporting"
+      ],
+      "kpis": [
+        "Project completion rate",
+        "Team coordination efficiency",
+        "Task delivery on schedule",
+        "Resource utilization optimization"
+      ]
+    },
+    {
+      "id": "sage",
+      "name": "Sage",
+      "role": "Full Stack Engineer",
+      "avatar": "🚀",
+      "specialties": [
+        "fullstack",
+        "integration",
+        "deployment",
+        "testing"
+      ],
+      "color": "#6366f1",
+      "responsibilities": [
+        "Project tasks and development work",
+        "Code quality and best practices",
+        "Team collaboration and communication",
+        "Continuous learning and improvement"
+      ],
+      "kpis": [
+        "Task completion rate",
+        "Code quality score",
+        "Team collaboration effectiveness",
+        "Problem resolution time"
+      ]
+    },
+    {
+      "id": "cipher",
+      "name": "Cipher",
+      "role": "Security Specialist",
+      "avatar": "🔒",
+      "specialties": [
+        "security",
+        "authentication",
+        "encryption",
+        "compliance"
+      ],
+      "color": "#6366f1",
+      "responsibilities": [
+        "Project tasks and development work",
+        "Code quality and best practices",
+        "Team collaboration and communication",
+        "Continuous learning and improvement"
+      ],
+      "kpis": [
+        "Task completion rate",
+        "Code quality score",
+        "Team collaboration effectiveness",
+        "Problem resolution time"
+      ]
+    },
+    {
+      "id": "pixel",
+      "name": "Pixel",
+      "role": "UI/UX Designer",
+      "avatar": "🎭",
+      "specialties": [
+        "design",
+        "prototyping",
+        "user-experience",
+        "branding"
+      ],
+      "color": "#6366f1",
+      "responsibilities": [
+        "Project tasks and development work",
+        "Code quality and best practices",
+        "Team collaboration and communication",
+        "Continuous learning and improvement"
+      ],
+      "kpis": [
+        "Task completion rate",
+        "Code quality score",
+        "Team collaboration effectiveness",
+        "Problem resolution time"
+      ]
+    }
+  ],
+  "team_structure": {
+    "manager": "alex",
+    "coordination_method": "JSON status updates",
+    "update_frequency": "daily"
+  }
+}

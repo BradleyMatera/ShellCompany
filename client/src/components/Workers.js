@@ -213,7 +213,7 @@ const Workers = () => {
             <div className="agents-empty">
               <p>No autonomous agents found</p>
               <p className="agents-help">
-                Autonomous agents (Alex, Nova, Pixel, Sage, Cipher, Sage) will appear here with their
+                Autonomous agents (Alex, Nova, Pixel, Zephyr, Cipher, Sage) will appear here with their
                 current status, assigned tasks, and specializations.
               </p>
             </div>
@@ -227,11 +227,7 @@ const Workers = () => {
                 >
                   <div className="agent-header">
                     <div className="agent-avatar">
-                      {agent.name === 'Alex' ? '👨‍💼' : 
-                       agent.name === 'Nova' ? '⚛️' : 
-                       agent.name === 'Pixel' ? '🎨' : 
-                       agent.name === 'Sage' ? '🚀' :
-                       agent.name === 'Cipher' ? '🔒' : '🤖'}
+                      {agent.avatar || '🤖'}
                     </div>
                   <div className="agent-info">
                     <div className="agent-name" style={{color: '#fff', fontSize: '16px', fontWeight: 'bold'}}>
@@ -273,9 +269,9 @@ const Workers = () => {
                   <div className="agent-specializations">
                     <div className="detail-label">Specializations:</div>
                     <div className="specialization-tags">
-                      {agent.specializations?.map(spec => (
+                      {(agent.specialties || agent.specializations || []).map(spec => (
                         <span key={spec} className="spec-tag">{spec}</span>
-                      )) || []}
+                      ))}
                     </div>
                   </div>
                 </div>

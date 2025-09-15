@@ -1,0 +1,16 @@
+{
+  "tasks": [
+    {
+      "id": 1001,
+      "title": "Review project setup and requirements",
+      "assignee_id": "nova",
+      "priority": "high",
+      "status": "todo",
+      "due_date": "2025-09-20",
+      "created_at": "2025-09-13T00:14:46.385Z",
+      "created_by": "manager",
+      "description": "Get familiar with project structure, requirements, and team coordination workflow"
+    }
+  ],
+  "last_updated": "2025-09-13T00:14:46.385Z"
+}

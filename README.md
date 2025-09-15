@@ -7,8 +7,16 @@ A production-ready autonomous agent company platform with real-time workflow exe
 - **Board Room**: Issue directives and track workflow execution
 - **Console**: Real-time streaming logs and stdout/stderr monitoring
 - **Workers**: Interactive agent environments with file management
-- **Ongoing Projects**: Project persistence and artifact management
+- **Ongoing Projects**: **[NEW]** Complete project workspace management with real-time file editing
 - **Engine Status**: Live AI provider monitoring with cost-mode intelligence
+
+### 🔥 **New Project Management System**
+- **Interactive File Browser**: Navigate and edit project files directly in the browser
+- **Real-time File Editing**: Live code editing with save/cancel functionality
+- **Command Execution**: Run npm scripts and safe commands within projects
+- **Artifact Downloads**: Download project files and deliverables
+- **Project Continuation**: Resume and modify existing autonomous projects
+- **Workspace Integration**: Seamless connection with agent environments
 
 ## 🏗️ Architecture
 
@@ -212,6 +220,33 @@ GET /api/autonomous/workflows
 GET /api/autonomous/workflow/:id
 ```
 
+### **🔥 Project Management (NEW)**
+```bash
+# Get all project workspaces
+GET /api/projects
+
+# Get specific project details
+GET /api/projects/:agentName/:projectName
+
+# File management
+GET /api/projects/:agentName/:projectName/files/:filePath    # Read file
+PUT /api/projects/:agentName/:projectName/files/:filePath    # Save file
+
+# Command execution
+POST /api/projects/:agentName/:projectName/commands
+{
+  "command": "npm run build"
+}
+
+# Project operations
+POST /api/projects/:agentName/:projectName/clone
+{
+  "newProjectName": "project-copy"
+}
+
+DELETE /api/projects/:agentName/:projectName
+```
+
 ### Engine Status
 ```bash
 # Get provider status
@@ -248,12 +283,23 @@ GET /api/autonomous/agents/:name/files/:path
 ShellCompany/
 ├── client/                 # React frontend
 │   ├── src/components/    # UI components
+│   │   ├── OngoingProjects.js  # [NEW] Project management interface
+│   │   ├── AgentEnvironment.js # Enhanced agent workspaces
+│   │   └── ...            # Other components
 │   └── public/           # Static assets
 ├── server/                # Node.js backend
 │   ├── models/           # Database models
 │   ├── routes/           # API routes
 │   ├── services/         # Business logic
+│   │   ├── project-manager.js    # [NEW] Project CRUD operations
+│   │   ├── workspace-manager.js  # Agent workspace management
+│   │   └── ...           # Other services
 │   └── agent-workspaces/ # Agent environments
+│       ├── alex-workspace/       # Project Manager workspace
+│       ├── nova-workspace/       # Frontend Developer workspace
+│       └── .../{project}-project/  # Individual projects
+├── docs/                  # [NEW] Documentation
+│   └── PROJECT_MANAGEMENT.md    # Project system documentation
 ├── package.json          # Root dependencies
 └── README.md            # This file
 ```

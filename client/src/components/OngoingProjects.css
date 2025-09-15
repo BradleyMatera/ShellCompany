@@ -55,6 +55,11 @@
   color: #888;
 }
 
+.projects-stats {
+  color: #666;
+  font-size: 12px;
+}
+
 .projects-controls {
   display: flex;
   align-items: center;
@@ -164,6 +169,22 @@
 
 .project-card.paused {
   border-left: 4px solid #f59e0b;
+}
+
+.project-card.active {
+  border-left: 4px solid #10b981;
+}
+
+.project-card.in-development {
+  border-left: 4px solid #3b82f6;
+}
+
+.project-card.setup-required {
+  border-left: 4px solid #f59e0b;
+}
+
+.project-card.inactive {
+  border-left: 4px solid #6c757d;
 }
 
 .project-header {
@@ -592,25 +613,520 @@
   background: #2563eb;
 }
 
+/* Project Type and Status */
+.project-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.type-icon {
+  font-size: 14px;
+}
+
+.type-text {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+}
+
+.project-name {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #fff;
+}
+
+.project-agent {
+  margin-bottom: 12px;
+}
+
+.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #333;
+  color: #22c55e;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.project-description {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #ccc;
+  line-height: 1.4;
+}
+
+.project-scripts {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.script-tags {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.script-tag {
+  background: #333;
+  color: #3b82f6;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.script-tag.more {
+  color: #888;
+}
+
+/* Project Workspace */
+.project-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid #333;
+  background: #1e1e1e;
+  gap: 16px;
+}
+
+.back-btn {
+  background: #333;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.back-btn:hover {
+  background: #444;
+}
+
+.project-info {
+  flex: 1;
+}
+
+.project-info h2 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.agent-info {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-badge.active {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.status-badge.completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.status-badge.in-development {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.status-badge.setup-required {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.status-badge.inactive {
+  background: rgba(108, 117, 125, 0.2);
+  color: #6c757d;
+}
+
+.project-path {
+  color: #888;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+}
+
+.workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.quick-commands {
+  display: flex;
+  gap: 8px;
+}
+
+.command-btn {
+  background: #22c55e;
+  color: #fff;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.command-btn:hover {
+  background: #16a34a;
+}
+
+/* Workspace Content */
+.workspace-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.file-browser {
+  width: 350px;
+  background: #1a1a1a;
+  border-right: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+}
+
+.browser-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #333;
+  background: #1e1e1e;
+}
+
+.browser-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.file-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.2s ease;
+  gap: 10px;
+}
+
+.file-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.file-item.selected {
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+}
+
+.file-item.directory {
+  color: #3b82f6;
+}
+
+.file-icon {
+  font-size: 16px;
+  width: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.file-details {
+  flex: 1;
+}
+
+.file-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.file-meta {
+  font-size: 11px;
+  color: #666;
+}
+
+/* File Viewer */
+.file-viewer {
+  flex: 1;
+  background: #1a1a1a;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewer-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid #333;
+  background: #1e1e1e;
+}
+
+.file-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.path-text {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  color: #fff;
+}
+
+.file-size {
+  font-size: 11px;
+  color: #666;
+}
+
+.viewer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-btn, .save-btn, .cancel-btn, .download-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.edit-btn {
+  background: #f59e0b;
+  color: #fff;
+}
+
+.edit-btn:hover {
+  background: #d97706;
+}
+
+.save-btn {
+  background: #22c55e;
+  color: #fff;
+}
+
+.save-btn:hover {
+  background: #16a34a;
+}
+
+.cancel-btn {
+  background: #ef4444;
+  color: #fff;
+}
+
+.cancel-btn:hover {
+  background: #dc2626;
+}
+
+.download-btn {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.download-btn:hover {
+  background: #2563eb;
+}
+
+.code-editor, .code-viewer {
+  flex: 1;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 20px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: #0a0a0a;
+  color: #fff;
+}
+
+.code-editor {
+  background: #111;
+}
+
+.no-file-selected {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+  color: #666;
+}
+
+.no-file-selected h3 {
+  margin: 0 0 12px 0;
+  color: #888;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.no-file-selected p {
+  margin: 0 0 32px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.artifacts-preview {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 20px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.artifacts-preview h4 {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.artifact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.artifact-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.artifact-icon {
+  font-size: 16px;
+  width: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.artifact-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.artifact-category {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #666;
+}
+
 @media (max-width: 768px) {
   .projects-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .project-details {
     width: 100%;
     position: fixed;
     top: 0;
     left: 0;
   }
-  
+
   .projects-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
-  
+
   .projects-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .workspace-content {
+    flex-direction: column;
+  }
+
+  .file-browser {
+    width: 100%;
+    height: 300px;
+  }
+
+  .workspace-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .workspace-actions {
     width: 100%;
     justify-content: space-between;
   }

@@ -1,0 +1,28 @@
+{
+  "name": "ShellCompany is fully",
+  "description": "ShellCompany is a fully autonomous AI-driven enterprise powered by AiManager. We specialize in end-to-end product development where multi-agent teams collaborate like a real workforce. From ideation to deployment, ShellCompany uses AI specialists to build, design, and launch scalable products at record speed.\n\nOur company runs like a real tech startup — complete with a CEO dashboard, project management, and AI workers who act as engineers, designers, and coordinators. Each agent operates with a specialty but works seamlessly with others, ensuring projects move forward without stalls or miscommunication.\n\n⸻\n\nMission Statement\n\nTo democratize product creation by giving individuals and businesses an autonomous AI workforce capable of designing, coding, securing, and deploying entire digital solutions without requiring a traditional team.\n\n⸻\n\nVision\n\nShellCompany aims to redefine how companies are built: a world where ideas instantly become functioning products through the coordination of intelligent AI agents.\n\n⸻\n\nCore Services\n\n🔹 Product Development\n\t•\tFull-stack web apps\n\t•\tMobile apps\n\t•\tAPIs and backend services\n\t•\tCustom dashboards and portals\n\n🔹 Design & Branding\n\t•\tUI/UX mockups\n\t•\tBrand kits and visual identity\n\t•\tAccessibility-compliant interfaces\n\n🔹 Security & Compliance\n\t•\tAuthentication systems\n\t•\tEncryption and secure storage\n\t•\tPolicy enforcement and logging\n\n🔹 Deployment & Operations\n\t•\tCloud deployment (AWS, Azure, GCP, Vercel, Netlify)\n\t•\tCI/CD pipelines and automation\n\t•\tMonitoring dashboards with live performance metrics\n\n🔹 Company Infrastructure\n\t•\tProject creation and organization in dedicated subfolders\n\t•\tLive CEO dashboard with real-time agent updates\n\t•\tBlocker identification and autonomous resolution\n\t•\tData exports and backups for long-term stability\n\n⸻\n\nAI Team Structure\n\nEach agent is a virtual “employee” with a defined role:\n\t•\tNova 🎨 — Frontend Specialist (React, UI/UX)\n\t•\tZephyr ⚡ — Backend Engineer (APIs, databases, features)\n\t•\tCipher 🔒 — Security Specialist (auth, encryption, compliance)\n\t•\tSage 🚀 — Full-Stack Integrator (bridges frontend and backend)\n\t•\tPixel 🎭 — UI/UX Designer (branding, layouts, design systems)\n\t•\tAlex 🏢 — Project Manager (coordinates agents, tracks progress)\n\n⸻\n\nExample Use Cases\n\t•\tLaunching a SaaS MVP from scratch\n\t•\tSpinning up a company website with branding and blog\n\t•\tBuilding and deploying an e-commerce store\n\t•\tCreating internal dashboards and monitoring tools\n\t•\tAutomating repetitive dev tasks (e.g., scaffolding, auth, CI setup)\n\n⸻\n\nCompetitive Edge\n\nUnlike static frameworks or single-agent tools, ShellCompany acts as a living organization. Projects don’t just get “generated” — they are continuously worked on, refined, and maintained by multiple agents collaborating like a real workforce. (fullstack complexity: low)",
+  "type": "fullstack",
+  "technologies": [
+    "React",
+    "JavaScript",
+    "CSS",
+    "Node.js",
+    "Express",
+    "Database",
+    "Authentication",
+    "JWT",
+    "Security",
+    "Dashboard",
+    "Charts",
+    "Analytics",
+    "Database",
+    "Data Modeling",
+    "API"
+  ],
+  "complexity": "high",
+  "estimatedDays": 7,
+  "created": "2025-09-13T00:54:53.857Z",
+  "status": "active",
+  "autonomous": true,
+  "template": "autonomous-ai-company"
+}
