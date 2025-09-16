@@ -225,7 +225,8 @@ docker-compose.override.yml
 *.cer
 
 # Package manager files
-package-lock.json
+# Allow committing package-lock.json for subprojects (server/client). Remove global ignore.
+# package-lock.json  <-- removed to allow per-folder lockfiles
 yarn.lock
 pnpm-lock.yaml
 
