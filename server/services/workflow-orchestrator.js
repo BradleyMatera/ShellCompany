@@ -334,8 +334,9 @@ class WorkflowOrchestrator {
       console.error(`[WORKFLOW:${workflowId}] Failed to persist to database:`, error);
     }
     
-    // Emit workflow creation to Board Room
-    this.socketio.emit('workflow-created', {
+    // Emit workflow creation to Board Room (guarded for test contexts without socketio)
+    if (this.socketio && typeof this.socketio.emit === 'function') {
+      this.socketio.emit('workflow-created', {
       workflowId,
       directive: userDirective,
       tasks: tasks.map(t => ({
@@ -346,7 +347,10 @@ class WorkflowOrchestrator {
         estimatedDuration: t.estimatedDuration
       })),
       estimates
-    });
+      });
+    } else {
+      console.log(`[WORKFLOW:${workflowId}] socketio not available, skipping workflow-created emit`);
+    }
 
     // Add tasks to execution queue
     this.queueTasks(tasks, workflowId);
@@ -539,6 +543,74 @@ class WorkflowOrchestrator {
 
     } else {
       // Generic workflow for other directives
+  // Special-case: brainstorm / idea generation directives
+  const lowerDir = directive.toLowerCase();
+  // Debug log - detect directive content
+  console.log('[WORKFLOW] decomposeDirective received directive:', directive);
+  // Match patterns like "bring me 3 ideas", "bring me ideas", or "brainstorm"
+  const isBrainstorm = (/bring\s+me/i.test(directive) && /idea/i.test(directive)) || /\bbrainstorm\b/i.test(directive);
+  if (isBrainstorm) console.log('[WORKFLOW] Brainstorm intent detected for directive');
+  if (isBrainstorm) {
+        // Create a short plan where Alex coordinates and each agent provides N unique ideas
+        const countMatch = directive.match(/(\d+)\s*(ideas|idea)/i);
+  let ideaCount = countMatch ? parseInt(countMatch[1], 10) : 5; // default 5 ideas
+  // Enforce sensible bounds to avoid runaway LLM usage
+  const MAX_IDEAS_PER_AGENT = 10;
+  if (isNaN(ideaCount) || ideaCount < 1) ideaCount = 1;
+  if (ideaCount > MAX_IDEAS_PER_AGENT) ideaCount = MAX_IDEAS_PER_AGENT;
+
+        const planningTask = {
+          id: uuidv4(),
+          title: 'Brainstorm planning and brief creation',
+          description: `Alex will create a short coordinating brief for idea generation: "${directive}"`,
+          assignedAgent: 'Alex',
+          commands: [ `echo "Brief for brainstorming: ${directive}" > brainstorm-brief.txt` ],
+          dependencies: [],
+          status: 'pending',
+          estimatedDuration: 8000
+        };
+
+        tasks.push(planningTask);
+
+        // Define agent-specific focus areas to encourage unique outputs
+        const perAgentPrompts = {
+          'Nova': 'Focus on frontend/product experience ideas (UI, features, user flows)',
+          'Pixel': 'Focus on visual and branding ideas (layouts, imagery, themes)',
+          'Zephyr': 'Focus on backend/features/architecture ideas (scalability, integrations)',
+          'Cipher': 'Focus on security/privacy/trust ideas (privacy-by-design, threat models)',
+          'Sage': 'Focus on operations/DevOps/deployment ideas (observability, CI/CD)',
+          'Ivy': 'Focus on messaging/documentation/positioning ideas (taglines, content angles)'
+        };
+
+  // Create one idea-generation task per registered agent in suggestedAgents or default roster
+  const defaultAgentRoster = ['Alex','Nova','Pixel','Zephyr','Cipher','Sage','Ivy'];
+  const agentList = (briefContext && briefContext.suggestedAgents && briefContext.suggestedAgents.length) ? briefContext.suggestedAgents : defaultAgentRoster;
+
+        for (const agentName of agentList) {
+          // Skip Alex for idea-producing tasks if desired (Alex coordinates)
+          if (agentName === 'Alex') continue;
+
+          const prompt = `Generate ${ideaCount} unique, numbered ideas about: ${directive}. ${perAgentPrompts[agentName] || ''} Provide short, actionable bullets and 1-sentence rationale for each idea.`;
+
+          const ideaTask = {
+            id: uuidv4(),
+            title: `Brainstorm ideas (${agentName})`,
+            description: `Ask ${agentName} to produce ${ideaCount} unique ideas for: ${directive}`,
+            assignedAgent: agentName,
+            type: 'ai_task',
+            prompt,
+            commands: [],
+            dependencies: [planningTask.id],
+            status: 'pending',
+            estimatedDuration: 15000
+          };
+
+          tasks.push(ideaTask);
+        }
+
+        return tasks;
+      }
+      console.log('[WORKFLOW] Brainstorm branch not taken, proceeding to generic fallback');
       const task1 = {
         id: uuidv4(),
         title: 'Analyze and plan directive',
@@ -1019,8 +1091,9 @@ class WorkflowOrchestrator {
       console.error(`[WORKFLOW:${workflowId}] Failed to update database:`, error);
     }
 
-    // Emit progress update
-    this.socketio.emit('workflow-progress', {
+    // Emit progress update (guarded)
+    if (this.socketio && typeof this.socketio.emit === 'function') {
+      this.socketio.emit('workflow-progress', {
       workflowId,
       progress: workflow.progress,
       status: workflow.status,
@@ -1032,7 +1105,10 @@ class WorkflowOrchestrator {
         actualDuration: t.actualDuration
       })),
       artifacts: workflow.artifacts.length
-    });
+      });
+    } else {
+      console.log(`[WORKFLOW:${workflowId}] socketio not available, skipping workflow-progress emit`);
+    }
   }
 
   getHistoricalAverage(agentName) {

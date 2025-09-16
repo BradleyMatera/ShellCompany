@@ -274,6 +274,19 @@ const BoardRoom = ({ state, setState }) => {
     setInputValue('');
   };
 
+  // Quick helper to trigger brainstorm via UI prompt
+  const handleBringMeIdeas = async () => {
+    const topic = window.prompt('Topic to brainstorm (e.g. product, marketing, features):', 'new onboarding experience');
+    if (!topic) return;
+    const countStr = window.prompt('How many ideas per agent? (default 5)', '5');
+    const count = parseInt(countStr, 10) || 5;
+    const directive = `Bring me ${count} ideas about ${topic}`;
+
+    setInputValue(directive);
+    // Reuse the existing send pipeline
+    setTimeout(() => handleSendMessage(), 100);
+  };
+
   // Submit clarifier response and then retry the workflow creation
   const submitClarifier = async () => {
     if (!pendingClarifier) return;
@@ -653,6 +666,9 @@ const BoardRoom = ({ state, setState }) => {
             </button>
             <button className="escalate-btn" disabled={!isConnected}>
               🚨 Escalate
+            </button>
+            <button onClick={handleBringMeIdeas} className="ideas-btn" disabled={!isConnected} title="Ask Alex to delegate idea generation to agents">
+              💡 Bring me ideas
             </button>
           </div>
         </div>
