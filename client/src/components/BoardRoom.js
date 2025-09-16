@@ -497,6 +497,12 @@ const BoardRoom = ({ state, setState }) => {
               <div className="workflow-header">
                 <div className="workflow-title">
                   <h4>🔄 ASK Manager Lifecycle</h4>
+                  {/* Collaboration banner */}
+                  {currentWorkflow.collaborationDetected && currentWorkflow.collaborationDepartments && currentWorkflow.collaborationDepartments.length > 0 && (
+                    <div className="collaboration-banner">
+                      <strong>Collaboration:</strong> {currentWorkflow.collaborationDepartments.join(' + ')}
+                    </div>
+                  )}
                   <div className="workflow-status">
                     {currentWorkflow.status === 'awaiting_clarification' ? '❓ Awaiting Clarification' :
                      currentWorkflow.status === 'waiting_for_ceo_approval' ? '👑 Awaiting CEO Approval' :

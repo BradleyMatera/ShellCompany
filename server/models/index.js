@@ -105,16 +105,30 @@ async function initializeDatabase() {
     }
 
     // Create default user for autonomous agents
-    await User.findOrCreate({
-      where: { id: 1 },
+    // Ensure we create a stable system user with the UUID expected by legacy code
+    const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
+    // Prefer finding by email to avoid unique constraint issues if a system user
+    // was created earlier with a different UUID. If not found, create with
+    // the stable UUID so legacy code relying on it continues to work.
+    const [systemUser, created] = await User.findOrCreate({
+      where: { email: 'system@shellcompany.ai' },
       defaults: {
+        id: SYSTEM_USER_ID,
         email: 'system@shellcompany.ai',
         name: 'System User',
         role: 'admin',
         is_active: true
       }
     });
-    console.log('✅ Default user ensured.');
+
+    if (!created && systemUser.id !== SYSTEM_USER_ID) {
+      console.log('⚠️  Existing system user found with different id:', systemUser.id);
+      console.log('⚠️  Leaving existing user in place to avoid cascading FK updates.');
+    } else if (created) {
+      console.log('✅ Default system user created with stable UUID.');
+    } else {
+      console.log('✅ Default system user exists with expected UUID.');
+    }
 
     return sequelize;
   } catch (error) {

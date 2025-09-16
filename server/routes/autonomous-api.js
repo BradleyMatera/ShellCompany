@@ -460,8 +460,60 @@ router.post('/workflow', ensureAuth, async (req, res) => {
     const orchestrator = req.app.locals.orchestrator;
     if (!orchestrator) return res.status(500).json({ error: 'orchestrator not available' });
 
-  const result = await orchestrator.createWorkflow(directive, briefContext);
-    return res.json({ success: true, workflowId: result.workflowId, tasks: result.workflow.tasks });
+    // Detect whether this directive requires cross-department collaboration
+    let collaborationDepartments = [];
+    try {
+      if (typeof orchestrator.detectCollaborationNeeds === 'function') {
+        collaborationDepartments = orchestrator.detectCollaborationNeeds(directive) || [];
+        console.log('[WORKFLOW CREATE] Collaboration detection:', collaborationDepartments);
+      }
+    } catch (e) {
+      console.warn('[WORKFLOW CREATE] Collaboration detection failed:', e && e.message);
+    }
+
+    let result;
+    try {
+      result = await orchestrator.createWorkflow(directive, briefContext);
+
+      // Broadcast collaboration hint for UI consumers
+      if (collaborationDepartments && collaborationDepartments.length > 1) {
+        broadcast({ type: 'workflow-collaboration-detected', workflowId: result.workflowId, departments: collaborationDepartments, timestamp: new Date().toISOString() });
+      }
+
+      return res.json({ success: true, workflowId: result.workflowId, tasks: result.workflow.tasks, collaborationDetected: (collaborationDepartments.length > 1), collaborationDepartments });
+    } catch (e) {
+      console.error('[WORKFLOW CREATE] Orchestrator createWorkflow failed, returning local preview workflow:', e && e.message);
+      // Fallback: synthesize a minimal in-memory workflow preview so the UI can show collaboration and tasks
+      try {
+        let tasks = [];
+        if (collaborationDepartments && collaborationDepartments.length > 1 && typeof orchestrator.createCollaborationWorkflow === 'function') {
+          tasks = orchestrator.createCollaborationWorkflow(directive, collaborationDepartments, briefContext);
+        } else if (typeof orchestrator.decomposeDirective === 'function') {
+          // decomposeDirective may be async
+          tasks = await orchestrator.decomposeDirective(directive, briefContext);
+        }
+
+        const fallbackWorkflow = {
+          workflowId: `local-${Date.now()}`,
+          id: `local-${Date.now()}`,
+          directive,
+          status: 'planned',
+          tasks: tasks || [],
+          estimates: {},
+          progress: { completed: 0, total: (tasks && tasks.length) || 0, percentage: 0 },
+          artifacts: [],
+          metadata: briefContext || {}
+        };
+
+        // Broadcast a lightweight created event for UI clients
+        broadcast({ type: 'workflow-created', workflow: fallbackWorkflow, timestamp: new Date().toISOString() });
+
+        return res.json({ success: true, workflowId: fallbackWorkflow.workflowId, workflow: fallbackWorkflow, collaborationDetected: (collaborationDepartments.length > 1), collaborationDepartments, message: 'Created local workflow preview (DB persistence failed)'});
+      } catch (inner) {
+        console.error('[WORKFLOW CREATE] Failed to synthesize fallback workflow:', inner && inner.message);
+        return res.status(500).json({ success: false, error: 'Failed to create autonomous workflow', details: e && e.message });
+      }
+    }
   } catch (e) {
     console.error('Failed to create workflow via API:', e && e.message);
     res.status(500).json({ error: 'failed_to_create_workflow', detail: e && e.message });
@@ -1260,8 +1312,45 @@ router.get('/workflows/:workflowId', async (req, res) => {
     const orchestrator = req.app.locals.orchestrator;
     if (!orchestrator) return res.status(500).json({ error: 'Orchestrator not available' });
 
-    // Prefer DB row for canonical fields
-    const dbWorkflow = await require('../models').Workflow.findByPk(workflowId).catch(() => null);
+    // Prefer DB row for canonical fields. Use raw SQL to avoid ORM selecting columns
+    // added by associations that may not exist in older DB schemas (project_id).
+    console.log('[DEBUG] GET /workflows/:workflowId - lookup', workflowId);
+    const models = require('../models');
+    let dbWorkflow = null;
+    try {
+      const rows = await models.sequelize.query(
+        'SELECT id, directive, status, start_time, end_time, total_duration, tasks, estimates, progress, artifacts, metadata FROM workflows WHERE id = ? LIMIT 1',
+        { replacements: [workflowId], type: models.sequelize.QueryTypes.SELECT }
+      ).catch(() => null);
+
+      const row = rows && rows.length ? rows[0] : null;
+      console.log('[DEBUG] Raw SQL result for workflow lookup:', row);
+      if (row) {
+        // Normalize JSON columns
+        const tasks = row.tasks ? (() => { try { return JSON.parse(row.tasks); } catch { return row.tasks; } })() : [];
+        const artifacts = row.artifacts ? (() => { try { return JSON.parse(row.artifacts); } catch { return row.artifacts; } })() : [];
+        const progress = row.progress ? (() => { try { return JSON.parse(row.progress); } catch { return row.progress; } })() : {};
+        const estimates = row.estimates ? (() => { try { return JSON.parse(row.estimates); } catch { return row.estimates; } })() : null;
+        const metadata = row.metadata ? (() => { try { return JSON.parse(row.metadata); } catch { return row.metadata; } })() : null;
+
+        dbWorkflow = {
+          id: row.id,
+          directive: row.directive,
+          status: row.status,
+          start_time: row.start_time,
+          end_time: row.end_time,
+          total_duration: row.total_duration,
+          tasks,
+          estimates,
+          progress,
+          artifacts,
+          metadata
+        };
+      }
+    } catch (e) {
+      console.warn('[DEBUG] Raw SQL workflow lookup failed:', e && e.message);
+      dbWorkflow = null;
+    }
     const memWorkflow = orchestrator.getWorkflowStatus(workflowId) || {};
 
     const merged = Object.assign({}, memWorkflow, dbWorkflow ? {
@@ -1555,25 +1644,218 @@ router.post('/workflow', async (req, res) => {
     }
 
     console.log(`🚀 Creating autonomous workflow: "${directive}"`);
-    const result = await orchestrator.createWorkflow(directive, briefContext);
 
-    broadcast({
-      type: 'workflow_created',
-      workflowId: result.workflowId,
-      directive,
-      briefId,
-      timestamp: new Date().toISOString()
-    });
+    // Detect collaboration needs early
+    let collaborationDepartments = [];
+    try {
+      if (typeof orchestrator.detectCollaborationNeeds === 'function') {
+        collaborationDepartments = orchestrator.detectCollaborationNeeds(directive) || [];
+        console.log('[LEGACY WORKFLOW CREATE] Collaboration detection:', collaborationDepartments);
+      }
+    } catch (e) {
+      console.warn('[LEGACY WORKFLOW CREATE] Collaboration detection failed:', e && e.message);
+    }
 
-    res.json({ 
-      success: true, 
-      workflowId: result.workflowId,
-      workflow: result.workflow,
-      briefContext: briefContext ? 'Brief context applied' : 'Direct workflow creation'
-    });
+    try {
+      const result = await orchestrator.createWorkflow(directive, briefContext);
+
+      broadcast({
+        type: 'workflow_created',
+        workflowId: result.workflowId,
+        directive,
+        briefId,
+        timestamp: new Date().toISOString()
+      });
+
+      // Broadcast collaboration hint
+      if (collaborationDepartments && collaborationDepartments.length > 1) {
+        broadcast({ type: 'workflow-collaboration-detected', workflowId: result.workflowId, departments: collaborationDepartments, timestamp: new Date().toISOString() });
+      }
+
+      return res.json({ 
+        success: true, 
+        workflowId: result.workflowId,
+        workflow: result.workflow,
+        collaborationDetected: (collaborationDepartments.length > 1),
+        collaborationDepartments,
+        briefContext: briefContext ? 'Brief context applied' : 'Direct workflow creation'
+      });
+    } catch (e) {
+      console.error('[LEGACY WORKFLOW CREATE] Orchestrator createWorkflow failed, synthesizing local preview:', e && e.message);
+      // Synthesize fallback preview so UI shows collaboration and tasks
+      try {
+        let tasks = [];
+        if (collaborationDepartments && collaborationDepartments.length > 1 && typeof orchestrator.createCollaborationWorkflow === 'function') {
+          tasks = orchestrator.createCollaborationWorkflow(directive, collaborationDepartments, briefContext);
+        } else if (typeof orchestrator.decomposeDirective === 'function') {
+          tasks = await orchestrator.decomposeDirective(directive, briefContext);
+        }
+
+        const fallbackWorkflow = {
+          workflowId: `local-${Date.now()}`,
+          id: `local-${Date.now()}`,
+          directive,
+          status: 'planned',
+          tasks: tasks || [],
+          estimates: {},
+          progress: { completed: 0, total: (tasks && tasks.length) || 0, percentage: 0 },
+          artifacts: [],
+          metadata: briefContext || {}
+        };
+
+        broadcast({ type: 'workflow-created', workflow: fallbackWorkflow, timestamp: new Date().toISOString() });
+
+        return res.json({ success: true, workflowId: fallbackWorkflow.workflowId, workflow: fallbackWorkflow, collaborationDetected: (collaborationDepartments.length > 1), collaborationDepartments, message: 'Created local workflow preview (DB persistence failed)'});
+      } catch (inner) {
+        console.error('[LEGACY WORKFLOW CREATE] Failed to synthesize fallback workflow:', inner && inner.message);
+        return res.status(500).json({ error: 'Failed to create workflow', detail: inner && inner.message });
+      }
+    }
   } catch (error) {
     console.error('❌ Error creating workflow:', error);
     res.status(500).json({ error: 'Failed to create workflow', detail: error.message });
+  }
+});
+
+// Admin utility: regenerate artifacts for a workflow (compatible with running orchestrator)
+router.post('/workflows/:workflowId/regenerate-artifacts', async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const orchestrator = req.app.locals.orchestrator;
+
+    // Try in-memory orchestrator first
+    let workflow = (orchestrator && typeof orchestrator.getWorkflowStatus === 'function') ? orchestrator.getWorkflowStatus(workflowId) : null;
+    console.log('[DEBUG] regenerate-artifacts called for', workflowId, 'orchestratorPresent=', !!orchestrator, 'inMemory=', !!workflow);
+
+    // If orchestrator doesn't have the workflow in-memory, fall back to DB row
+    const models = require('../models');
+    if (!workflow) {
+      console.log('[DEBUG] regenerate: orchestrator missing workflow, attempting DB lookup for', workflowId);
+      // Use raw SQL to fetch workflow row without relying on ORM columns that may not exist
+      let dbRow = null;
+      try {
+        const rows = await models.sequelize.query(
+          'SELECT id, directive, status, start_time, end_time, total_duration, tasks, estimates, progress, artifacts, metadata FROM workflows WHERE id = ? LIMIT 1',
+          { replacements: [workflowId], type: models.sequelize.QueryTypes.SELECT }
+        ).catch(() => null);
+        dbRow = rows && rows.length ? rows[0] : null;
+        console.log('[DEBUG] regenerate raw SQL result:', dbRow);
+      } catch (rawErr) {
+        console.warn('[DEBUG] regenerate raw SQL failed:', rawErr && rawErr.message);
+      }
+
+      if (!dbRow) {
+        console.warn('[DEBUG] regenerate: DB lookup did not find workflow', workflowId);
+        return res.status(404).json({ error: 'Workflow not found' });
+      }
+
+      // Normalize dbRow into mem-like workflow
+      const tasks = dbRow.tasks ? (() => { try { return JSON.parse(dbRow.tasks); } catch { return dbRow.tasks; } })() : [];
+      const artifacts = dbRow.artifacts ? (() => { try { return JSON.parse(dbRow.artifacts); } catch { return dbRow.artifacts; } })() : [];
+      const progress = dbRow.progress ? (() => { try { return JSON.parse(dbRow.progress); } catch { return dbRow.progress; } })() : { completed: 0, total: 0, percentage: 0 };
+      const estimates = dbRow.estimates ? (() => { try { return JSON.parse(dbRow.estimates); } catch { return dbRow.estimates; } })() : null;
+      const metadata = dbRow.metadata ? (() => { try { return JSON.parse(dbRow.metadata); } catch { return dbRow.metadata; } })() : null;
+
+      workflow = {
+        id: dbRow.id,
+        directive: dbRow.directive,
+        status: dbRow.status,
+        startTime: dbRow.start_time ? new Date(dbRow.start_time).getTime() : undefined,
+        endTime: dbRow.end_time ? new Date(dbRow.end_time).getTime() : undefined,
+        tasks,
+        progress,
+        artifacts,
+        metadata
+      };
+    }
+
+    
+
+    const updatedTasks = [];
+
+    // Helper to persist updated workflow.tasks back to DB when operating from DB fallback
+    let needDbPersist = false;
+
+    for (const task of workflow.tasks || []) {
+      const existingArtifacts = task.artifacts || (task.results && task.results.artifacts) || [];
+      if (existingArtifacts && existingArtifacts.length > 0) { updatedTasks.push(task); continue; }
+
+      const prompt = task.prompt || task.description || task.title || null;
+      if (!prompt) { updatedTasks.push(task); continue; }
+
+      // If orchestrator exists and can execute the task, prefer that
+      if (orchestrator && typeof orchestrator.executeTask === 'function') {
+        try {
+          const result = await orchestrator.executeTask(task);
+          task.result = result && (result.result || result.content) ? (result.result || result.content) : task.result || null;
+          task.artifacts = result && result.artifacts ? result.artifacts : (task.artifacts || []);
+        } catch (e) {
+          console.error('[AUTONOMOUS API] Orchestrator regenerate error for task', task.id, e && e.message);
+        }
+
+      } else {
+        // No orchestrator method available (or running in different process). Use agentEngine to execute task and collect artifacts.
+        try {
+          const agentEngine = require('../services/agent-engine');
+
+          // Create a minimal task object expected by agentEngine.executeTask
+          const execTask = {
+            id: task.id || (task.taskId || `task_${Date.now()}`),
+            prompt: prompt,
+            userId: req.user && req.user.id ? req.user.id : 1,
+            projectId: task.projectId || (workflow.metadata && workflow.metadata.project_id) || null,
+            tools: ['filesystem'],
+            constraints: task.constraints || {},
+            priority: task.priority || 'normal',
+            assignedAgent: task.assignedAgent || task.owner || null
+          };
+
+          // agentEngine.executeTask returns a job-like object with .result/toolResults/artifacts depending on implementation
+          const jobResult = await agentEngine.executeTask(execTask).catch(err => { throw err; });
+
+          // Normalize artifacts from various shapes
+          const artifacts = (jobResult && jobResult.artifacts) || (jobResult && jobResult.result && jobResult.result.artifacts) || [];
+          const responseText = (jobResult && (jobResult.response || jobResult.result || jobResult.result?.response)) || jobResult && jobResult.result || null;
+
+          task.result = task.result || responseText || (jobResult && jobResult.response) || null;
+          task.artifacts = artifacts;
+
+          // Mark that we need to persist artifacts back to DB if this workflow came from DB
+          if (Array.isArray(artifacts) && artifacts.length > 0) needDbPersist = true;
+
+        } catch (e) {
+          console.error('[AUTONOMOUS API] agentEngine regenerate error for task', task.id, e && e.message);
+        }
+      }
+
+      updatedTasks.push(task);
+    }
+
+    workflow.tasks = updatedTasks;
+    workflow.updatedAt = Date.now();
+
+    // If we were operating from DB, persist updated tasks/artifacts back to Workflow row
+    try {
+      if (needDbPersist) {
+        // Load fresh DB row then update tasks and artifacts arrays
+        const dbRow = await models.Workflow.findByPk(workflow.id).catch(() => null);
+        if (dbRow) {
+          await dbRow.update({ tasks: workflow.tasks, artifacts: workflow.artifacts || dbRow.artifacts || [] }).catch(() => null);
+        }
+      }
+    } catch (e) {
+      console.warn('[AUTONOMOUS API] Failed to persist regenerated artifacts to DB:', e && e.message);
+    }
+
+    // Broadcast workflow update if orchestrator provides a broadcaster
+    if (orchestrator && typeof orchestrator.broadcastWorkflowUpdate === 'function') {
+      try { orchestrator.broadcastWorkflowUpdate(workflow); } catch (e) { console.warn('broadcastWorkflowUpdate failed', e && e.message); }
+    }
+
+    return res.json({ success: true, workflow });
+  } catch (error) {
+    console.error('[AUTONOMOUS API] regenerate-artifacts failed:', error && error.message);
+    return res.status(500).json({ error: 'regenerate_failed', detail: error && error.message });
   }
 });
 

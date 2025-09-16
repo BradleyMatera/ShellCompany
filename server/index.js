@@ -102,10 +102,15 @@ app.get('/api/projects', async (req, res) => {
 
     // If no projects exist, create one for ongoing workflows
     if (projects.length === 0) {
+      // Determine actual system user id (avoid hard-coded UUID which may not exist)
+      const { User } = require('./models');
+      const sysUser = await User.findOne({ where: { email: 'system@shellcompany.ai' } });
+      const ownerId = sysUser ? sysUser.id : '00000000-0000-0000-0000-000000000001';
+
       const defaultProject = await Project.create({
         name: 'ShellCompany Platform',
         description: 'Main autonomous AI company development project',
-        owner_id: '00000000-0000-0000-0000-000000000001', // Default owner ID
+        owner_id: ownerId,
         status: 'active',
         settings: {
           autoCreateFromWorkflows: true,
@@ -175,10 +180,14 @@ app.post('/api/projects', async (req, res) => {
       return res.status(400).json({ error: 'Project name is required' });
     }
 
+    const { User } = require('./models');
+    const sysUser = await User.findOne({ where: { email: 'system@shellcompany.ai' } });
+    const ownerId = sysUser ? sysUser.id : '00000000-0000-0000-0000-000000000001';
+
     const project = await Project.create({
       name: name.trim(),
       description: description?.trim() || '',
-      owner_id: '00000000-0000-0000-0000-000000000001', // Default system user
+      owner_id: ownerId,
       status: 'active',
       settings: {
         repository: repository || { url: '', branch: 'main' },
@@ -646,10 +655,14 @@ app.post('/api/autonomous/workflow', async (req, res) => {
       });
 
       if (!project) {
+        const { User } = require('./models');
+        const sysUser = await User.findOne({ where: { email: 'system@shellcompany.ai' } });
+        const ownerId = sysUser ? sysUser.id : '00000000-0000-0000-0000-000000000001';
+
         project = await Project.create({
           name: 'ShellCompany Platform',
           description: 'Main autonomous AI company development project',
-          owner_id: '00000000-0000-0000-0000-000000000001',
+          owner_id: ownerId,
           status: 'active',
           settings: {
             autoCreateFromWorkflows: true,
@@ -659,23 +672,77 @@ app.post('/api/autonomous/workflow', async (req, res) => {
       }
     }
 
-    const { workflowId, workflow } = await orchestrator.createWorkflow(directive, {
-      projectId: project.id,
-      projectName: project.name
-    });
+    // Detect collaboration needs early
+    let collaborationDepartments = [];
+    try {
+      if (typeof orchestrator.detectCollaborationNeeds === 'function') {
+        collaborationDepartments = orchestrator.detectCollaborationNeeds(directive) || [];
+        console.log('[BOARDROOM] Collaboration detection:', collaborationDepartments);
+      }
+    } catch (e) {
+      console.warn('[BOARDROOM] Collaboration detection failed:', e && e.message);
+    }
 
-    console.log(`[BOARDROOM] Created REAL workflow ${workflowId} for project ${project.name} with ${workflow.tasks.length} tasks`);
+    try {
+      const { workflowId, workflow } = await orchestrator.createWorkflow(directive, {
+        projectId: project.id,
+        projectName: project.name
+      });
 
-    res.json({
-      success: true,
-      workflowId: workflowId,
-      projectId: project.id,
-      projectName: project.name,
-      message: 'REAL autonomous workflow initiated successfully',
-      estimatedCompletion: workflow.estimates.explanation,
-      tasks: workflow.tasks.length,
-      agents: workflow.estimates.availableAgents
-    });
+      console.log(`[BOARDROOM] Created REAL workflow ${workflowId} for project ${project.name} with ${workflow.tasks.length} tasks`);
+
+      // Broadcast collaboration hint
+      if (collaborationDepartments && collaborationDepartments.length > 1) {
+        // if router broadcast available, attempt via require
+        try { const autoRouter = require('./routes/autonomous-api'); } catch (e) {}
+        // Also log for visibility
+        console.log('[BOARDROOM] Collaboration departments:', collaborationDepartments.join(', '));
+      }
+
+      return res.json({
+        success: true,
+        workflowId: workflowId,
+        projectId: project.id,
+        projectName: project.name,
+        message: 'REAL autonomous workflow initiated successfully',
+        estimatedCompletion: workflow.estimates.explanation,
+        tasks: workflow.tasks.length,
+        agents: workflow.estimates.availableAgents,
+        collaborationDetected: (collaborationDepartments.length > 1),
+        collaborationDepartments
+      });
+    } catch (e) {
+      console.error('[BOARDROOM] Orchestrator createWorkflow failed, synthesizing local preview:', e && e.message);
+      // Synthesize fallback preview so UI can still show collaboration and tasks
+      try {
+        let tasks = [];
+        if (collaborationDepartments && collaborationDepartments.length > 1 && typeof orchestrator.createCollaborationWorkflow === 'function') {
+          tasks = orchestrator.createCollaborationWorkflow(directive, collaborationDepartments, { projectId: project.id, projectName: project.name });
+        } else if (typeof orchestrator.decomposeDirective === 'function') {
+          tasks = await orchestrator.decomposeDirective(directive, { projectId: project.id, projectName: project.name });
+        }
+
+        const fallbackWorkflow = {
+          workflowId: `local-${Date.now()}`,
+          id: `local-${Date.now()}`,
+          directive,
+          status: 'planned',
+          tasks: tasks || [],
+          estimates: {},
+          progress: { completed: 0, total: (tasks && tasks.length) || 0, percentage: 0 },
+          artifacts: [],
+          metadata: { project_id: project.id, project_name: project.name }
+        };
+
+        // Emit boardroom log and send fallback response
+        console.log(`[BOARDROOM] Returning local workflow preview ${fallbackWorkflow.workflowId} (DB persistence failed)`);
+
+        return res.json({ success: true, workflowId: fallbackWorkflow.workflowId, workflow: fallbackWorkflow, collaborationDetected: (collaborationDepartments.length > 1), collaborationDepartments, message: 'Created local workflow preview (DB persistence failed)'});
+      } catch (inner) {
+        console.error('[BOARDROOM] Failed to synthesize fallback workflow:', inner && inner.message);
+        return res.status(500).json({ success: false, error: 'Failed to create autonomous workflow', details: e.message });
+      }
+    }
 
   } catch (error) {
     console.error('[BOARDROOM] Failed to create workflow:', error);
@@ -1712,10 +1779,14 @@ app.post('/api/autonomous/workflows/regenerate', async (req, res) => {
     });
 
     if (!project) {
+      const { User } = require('./models');
+      const sysUser = await User.findOne({ where: { email: 'system@shellcompany.ai' } });
+      const ownerId = sysUser ? sysUser.id : '00000000-0000-0000-0000-000000000001';
+
       project = await Project.create({
         name: 'ShellCompany Platform',
         description: 'Main autonomous AI company development project',
-        owner_id: '00000000-0000-0000-0000-000000000001',
+        owner_id: ownerId,
         status: 'active',
         settings: { defaultProject: true }
       });
@@ -2488,6 +2559,55 @@ app.get('/api/autonomous/workflows/:workflowId/artifacts/:artifactId/download', 
   } catch (error) {
     console.error('Failed to download artifact:', error);
     res.status(500).json({ error: 'Failed to download artifact' });
+  }
+});
+
+// Admin utility: regenerate artifacts for a workflow (compatible with running orchestrator)
+app.post('/api/autonomous/workflows/:workflowId/regenerate-artifacts', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  const { workflowId } = req.params;
+
+  try {
+    const orchestrator = req.app.locals.orchestrator;
+    if (!orchestrator) return res.status(500).json({ error: 'orchestrator_not_available' });
+
+    const workflow = orchestrator.getWorkflowStatus ? orchestrator.getWorkflowStatus(workflowId) : null;
+    if (!workflow) return res.status(404).json({ error: 'Workflow not found' });
+
+    const updatedTasks = [];
+    for (const task of workflow.tasks || []) {
+      const existingArtifacts = task.artifacts || (task.results && task.results.artifacts) || [];
+      if (existingArtifacts && existingArtifacts.length > 0) { updatedTasks.push(task); continue; }
+
+      const prompt = task.prompt || task.description;
+      if (!prompt) { updatedTasks.push(task); continue; }
+
+      // If orchestrator exposes an executeTask method, use it
+      if (typeof orchestrator.executeTask === 'function') {
+        try {
+          const result = await orchestrator.executeTask(task);
+          task.result = result && (result.result || result.content) ? (result.result || result.content) : null;
+          task.artifacts = result && result.artifacts ? result.artifacts : (task.artifacts || []);
+        } catch (e) {
+          console.error('[API] Orchestrator regenerate error for task', task.id, e && e.message);
+        }
+      }
+
+      updatedTasks.push(task);
+    }
+
+    workflow.tasks = updatedTasks;
+    workflow.updatedAt = Date.now();
+
+    // broadcast if possible
+    if (typeof orchestrator.broadcastWorkflowUpdate === 'function') {
+      try { orchestrator.broadcastWorkflowUpdate(workflow); } catch (e) {}
+    }
+
+    return res.json({ success: true, workflow });
+  } catch (error) {
+    console.error('[API] regenerate-artifacts failed:', error);
+    return res.status(500).json({ error: 'regenerate_failed', detail: error.message });
   }
 });
 

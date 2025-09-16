@@ -1185,6 +1185,67 @@ app.post('/api/autonomous/workflow', async (req, res) => {
   }
 });
 
+// Admin utility: regenerate artifacts for a workflow by re-running agent harnesses
+app.post('/api/autonomous/workflows/:workflowId/regenerate-artifacts', async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const workflow = workflowSystem.activeWorkflows.get(workflowId) || workflowSystem.completedTasks.find(w => w.id === workflowId);
+    if (!workflow) return res.status(404).json({ error: 'Workflow not found' });
+
+    const updatedTasks = [];
+    for (const task of workflow.tasks) {
+      // Skip tasks that already have artifacts
+      const existingArtifacts = task.artifacts || (task.results && task.results.artifacts) || [];
+      if (existingArtifacts && existingArtifacts.length > 0) {
+        updatedTasks.push(task);
+        continue;
+      }
+
+      // Only attempt to regenerate for AI tasks that have a prompt
+      const prompt = task.prompt || task.description;
+      if (!prompt) {
+        updatedTasks.push(task);
+        continue;
+      }
+
+      // Map assigned agent name to harness in workflowSystem
+      const assigned = (task.assignedAgent || task.owner || '').toString().toLowerCase();
+      const harness = workflowSystem.agents && workflowSystem.agents[assigned];
+      if (!harness || typeof harness.executeTask !== 'function') {
+        updatedTasks.push(task);
+        continue;
+      }
+
+      try {
+        const result = await harness.executeTask({ description: prompt, context: { workflowId: workflow.id, taskId: task.id } });
+        // Attach results and artifacts
+        task.result = result.result || result.content || null;
+        task.artifacts = result.artifacts || (result.content ? [{ id: 'inline-'+Date.now(), type: 'report', title: `${assigned} output`, preview: result.content.substring(0,200), content: result.content }] : []);
+        // Also update structured results field
+        task.results = task.results || {};
+        task.results.artifacts = task.artifacts;
+        updatedTasks.push(task);
+      } catch (e) {
+        console.error('[API] Failed to regenerate artifact for task', task.id, e && e.message);
+        updatedTasks.push(task);
+      }
+    }
+
+    // Replace tasks and update workflow
+    workflow.tasks = updatedTasks;
+    workflow.updatedAt = Date.now();
+    workflowSystem.activeWorkflows.set(workflow.id, workflow);
+
+    // Broadcast update
+    try { workflowSystem.broadcastWorkflowUpdate(workflow); } catch (e) {}
+
+    res.json({ success: true, workflow });
+  } catch (error) {
+    console.error('[API] regenerate-artifacts failed:', error);
+    res.status(500).json({ error: 'regenerate_failed', detail: error.message });
+  }
+});
+
 app.get('/api/integrations/test', async (req, res) => {
   try {
     const results = await integrationService.testAllIntegrations();
