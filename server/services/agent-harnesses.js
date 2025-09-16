@@ -183,7 +183,6 @@ class AgentCapabilityHarness {
   async callLLMProvider(task) {
     const provider = this.providerConfig[this.currentProvider];
     if (!provider) throw new Error(`Provider ${this.currentProvider} not configured`);
-
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${provider.apiKey}`
@@ -195,9 +194,16 @@ class AgentCapabilityHarness {
 
     const requestBody = this.buildProviderRequest(task, this.currentProvider);
 
-    const response = await axios.post(provider.endpoint, requestBody, { headers });
-
-    return this.parseProviderResponse(response.data, this.currentProvider);
+    try {
+      const response = await axios.post(provider.endpoint, requestBody, { headers, timeout: 120000 });
+      // normalize response data shape before parsing
+      const data = response && response.data ? response.data : {};
+      return this.parseProviderResponse(data, this.currentProvider);
+    } catch (err) {
+      console.warn(`[AGENT:${this.agentName}] Provider call failed for ${this.currentProvider}:`, err && err.message);
+      // Return a safe default result object so executeTask can continue gracefully
+      return { content: '', tokensUsed: 0, artifacts: [] };
+    }
   }
 
   buildProviderRequest(task, provider) {
@@ -234,29 +240,71 @@ Please provide a detailed response with any artifacts that should be created.`;
   }
 
   parseProviderResponse(data, provider) {
+    // Defensive parsing: coerce to expected shapes and avoid throwing on missing fields
     let content = '';
     let tokensUsed = 0;
     let artifacts = [];
 
-    switch (provider) {
-      case 'anthropic':
-        content = data.content?.[0]?.text || '';
-        tokensUsed = data.usage?.output_tokens || 0;
-        break;
+    try {
+      switch (provider) {
+        case 'anthropic':
+          // data.content may be string or array; handle both
+          if (Array.isArray(data.content) && data.content.length > 0) {
+            content = String(data.content[0].text || '');
+          } else if (typeof data.content === 'string') {
+            content = data.content;
+          } else {
+            content = '';
+          }
+          tokensUsed = Number(data.usage?.output_tokens || 0) || 0;
+          break;
 
-      case 'openai':
-        content = data.choices?.[0]?.message?.content || '';
-        tokensUsed = data.usage?.total_tokens || 0;
-        break;
+        case 'openai':
+          // choices may be missing or in unexpected format
+          if (Array.isArray(data.choices) && data.choices.length > 0) {
+            const choice = data.choices[0];
+            content = String(choice?.message?.content || choice?.text || '');
+          } else if (typeof data.text === 'string') {
+            content = data.text;
+          }
+          tokensUsed = Number(data.usage?.total_tokens || 0) || 0;
+          break;
 
-      case 'google':
-        content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        tokensUsed = data.usageMetadata?.totalTokenCount || 0;
-        break;
+        case 'google':
+          // candidates -> content -> parts is deep; guard every access
+          if (Array.isArray(data.candidates) && data.candidates.length > 0) {
+            const cand = data.candidates[0];
+            if (cand && cand.content && Array.isArray(cand.content.parts) && cand.content.parts.length > 0) {
+              content = String(cand.content.parts[0].text || '');
+            } else if (typeof cand?.content === 'string') {
+              content = cand.content;
+            }
+          }
+          tokensUsed = Number(data.usageMetadata?.totalTokenCount || 0) || 0;
+          break;
+
+        default:
+          content = typeof data === 'string' ? data : JSON.stringify(data || {});
+          tokensUsed = 0;
+      }
+    } catch (e) {
+      console.warn(`[AGENT:${this.agentName}] Error parsing provider response for ${provider}:`, e && e.message);
+      content = '';
+      tokensUsed = 0;
     }
 
-    artifacts = this.extractArtifacts(content);
+    // Ensure content is a string
+    content = content == null ? '' : String(content);
 
+    // Extract artifacts defensively; if extractArtifacts throws, catch it
+    try {
+      artifacts = Array.isArray(this.extractArtifacts(content)) ? this.extractArtifacts(content) : [];
+    } catch (e) {
+      console.warn(`[AGENT:${this.agentName}] extractArtifacts failed:`, e && e.message);
+      artifacts = [];
+    }
+
+    // Normalize return object
     return { content, tokensUsed, artifacts };
   }
 
@@ -293,22 +341,103 @@ Please provide a detailed response with any artifacts that should be created.`;
   }
 
   async storeArtifact(artifact, workflowId = 'unknown') {
+    const crypto = require('crypto');
+    const { Artifact, Workflow } = require('../models');
+
     const artifactPath = path.join(__dirname, '../artifacts', this.agentName.toLowerCase());
     await fs.mkdir(artifactPath, { recursive: true });
 
     const filename = artifact.filename || `${artifact.id}.${artifact.language || 'txt'}`;
     const filepath = path.join(artifactPath, filename);
 
-    await fs.writeFile(filepath, artifact.content);
+    // Ensure content is a string or buffer
+    const contentBuf = Buffer.isBuffer(artifact.content) ? artifact.content : Buffer.from(String(artifact.content || ''), 'utf8');
 
-    this.artifactStore.set(artifact.id, {
-      ...artifact,
-      filepath,
-      stored: true
-    });
+    // Compute sha256 to dedupe
+    const sha256 = crypto.createHash('sha256').update(contentBuf).digest('hex');
 
-    // Structured logging for Console UI
-    console.log(`[AGENT:${this.agentName}] [WORKFLOW:${workflowId}] Stored artifact: ${filename} (${artifact.content.length} bytes)`);
+    // If artifact with sha exists in DB, link instead of duplicating
+    let dbArtifact = null;
+    try {
+      dbArtifact = await Artifact.findOne({ where: { sha256 } });
+    } catch (e) {
+      console.warn('[AGENT] Artifact DB lookup failed:', e && e.message);
+    }
+
+    if (dbArtifact) {
+      // Already exists: create an entry in local store linking to existing artifact id
+      this.artifactStore.set(dbArtifact.id, {
+        ...artifact,
+        filepath: dbArtifact.path,
+        stored: true,
+        sha256: dbArtifact.sha256
+      });
+
+      console.log(`[AGENT:${this.agentName}] [WORKFLOW:${workflowId}] Linked to existing artifact: ${dbArtifact.path} (sha256=${sha256})`);
+      return dbArtifact;
+    }
+
+    // Write file to disk
+    await fs.writeFile(filepath, contentBuf);
+
+    // Persist artifact row with lineage
+    const bytes = contentBuf.length;
+    const lineage = {
+      created_by: this.agentName,
+      requested_by: artifact.requestedBy || null,
+      workflow_id: workflowId
+    };
+
+    try {
+      // Try to determine project_id from workflow metadata if possible
+      let projectId = null;
+      if (workflowId && workflowId !== 'unknown') {
+        try {
+          const wf = await Workflow.findByPk(workflowId);
+          projectId = wf && wf.metadata && wf.metadata.project_id ? wf.metadata.project_id : null;
+        } catch (e) {
+          // ignore - best-effort
+        }
+      }
+
+      // Fallback to default project if not found
+      if (!projectId) projectId = artifact.projectId || 'unknown';
+
+      dbArtifact = await Artifact.create({
+        project_id: projectId,
+        path: filepath,
+        sha256,
+        bytes,
+        produced_by_task: artifact.produced_by_task || null,
+        workflow_id: workflowId === 'unknown' ? null : workflowId,
+        created_by: lineage.created_by,
+        requested_by: lineage.requested_by,
+        metadata: artifact.metadata || null
+      });
+
+      this.artifactStore.set(dbArtifact.id, {
+        ...artifact,
+        id: dbArtifact.id,
+        filepath,
+        stored: true,
+        sha256
+      });
+
+      console.log(`[AGENT:${this.agentName}] [WORKFLOW:${workflowId}] Stored and persisted artifact: ${filename} (${bytes} bytes) -> DB ID ${dbArtifact.id}`);
+
+      return dbArtifact;
+    } catch (err) {
+      console.warn('[AGENT] Failed to persist Artifact row:', err && err.message);
+      // still keep artifact on disk and local store
+      this.artifactStore.set(artifact.id, {
+        ...artifact,
+        filepath,
+        stored: true,
+        sha256
+      });
+
+      return null;
+    }
   }
 
   updateMetrics(responseTime, tokensUsed, success) {

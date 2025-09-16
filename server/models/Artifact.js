@@ -7,7 +7,11 @@ module.exports = (sequelize) => {
     path: { type: DataTypes.STRING, allowNull: false },
     sha256: { type: DataTypes.STRING, allowNull: false, unique: true },
     bytes: { type: DataTypes.INTEGER, allowNull: false },
-    produced_by_task: { type: DataTypes.UUID, allowNull: true }
+    produced_by_task: { type: DataTypes.UUID, allowNull: true },
+    workflow_id: { type: DataTypes.UUID, allowNull: true },
+    created_by: { type: DataTypes.STRING, allowNull: true },
+    requested_by: { type: DataTypes.STRING, allowNull: true },
+    metadata: { type: DataTypes.JSON, allowNull: true }
   }, {
     tableName: 'artifacts'
   });

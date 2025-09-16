@@ -18,7 +18,27 @@ function createLogger(projectId, ptyId) {
   const base = path.join(homeDir(), 'ShellCompany', '.logs', projectId);
   const logPath = path.join(base, `${ptyId}.jsonl`);
   const stream = fs.createWriteStream(logPath, { flags: 'a' });
-  return { logPath, stream, write: (obj) => stream.write(JSON.stringify(obj) + '\n'), end: () => stream.end() };
+
+  // Defensive error handling: if stream errors occur (EIO, ENOSPC, etc.), log and continue
+  stream.on('error', (err) => {
+    try {
+      console.error(`[PTY-LOGGER] Write stream error for ${logPath}:`, err && err.message ? err.message : err);
+    } catch (e) {
+      // swallow any logging errors
+    }
+  });
+
+  const safeWrite = (obj) => {
+    try {
+      if (!stream.destroyed) stream.write(JSON.stringify(obj) + '\n');
+    } catch (e) {
+      try { console.error('[PTY-LOGGER] Failed to write log entry:', e && e.message); } catch (ee) {}
+    }
+  };
+
+  const safeEnd = () => { try { if (!stream.destroyed) stream.end(); } catch (e) { /* ignore */ } };
+
+  return { logPath, stream, write: safeWrite, end: safeEnd };
 }
 
 async function start({ projectId = 'shellcompany', shell, cwd }) {

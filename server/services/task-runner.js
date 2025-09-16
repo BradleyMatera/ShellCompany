@@ -36,6 +36,12 @@ async function startTask({ projectId, command, args = [], cwd, env = {} }) {
   await ensureDir(logDir);
   const logPath = path.join(logDir, `${taskId}.jsonl`);
   const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+  // Defensive handling for write stream errors
+  logStream.on('error', (err) => {
+    try {
+      console.error(`[TASK-LOGGER] Write stream error for ${logPath}:`, err && err.message ? err.message : err);
+    } catch (e) {}
+  });
 
   const startEvent = { type: 'task_started', ts: nowIso(), taskId, projectId, command, args, cwd: cwd || process.cwd() };
   jsonlWrite(logStream, startEvent);

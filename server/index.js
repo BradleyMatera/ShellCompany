@@ -684,30 +684,59 @@ app.post('/api/autonomous/workflow', async (req, res) => {
     }
 
     try {
-      const { workflowId, workflow } = await orchestrator.createWorkflow(directive, {
-        projectId: project.id,
-        projectName: project.name
-      });
-
-      console.log(`[BOARDROOM] Created REAL workflow ${workflowId} for project ${project.name} with ${workflow.tasks.length} tasks`);
-
-      // Broadcast collaboration hint
-      if (collaborationDepartments && collaborationDepartments.length > 1) {
-        // if router broadcast available, attempt via require
-        try { const autoRouter = require('./routes/autonomous-api'); } catch (e) {}
-        // Also log for visibility
-        console.log('[BOARDROOM] Collaboration departments:', collaborationDepartments.join(', '));
+      // Persist a placeholder workflow row so the UI has an immediate reference
+      const { Workflow } = require('./models');
+      let placeholderWorkflow = null;
+      try {
+        placeholderWorkflow = await Workflow.create({
+          directive: directive,
+          status: 'pending',
+          metadata: { project_id: project.id, project_name: project.name }
+        });
+      } catch (pwErr) {
+        console.warn('[BOARDROOM] Failed to create placeholder workflow row:', pwErr && pwErr.message);
       }
 
-      return res.json({
+      // Start createWorkflow in background without awaiting it to avoid blocking the HTTP request.
+      // We intentionally do not await here; orchestration will continue and update DB when ready.
+      setImmediate(async () => {
+        try {
+          const createResult = await orchestrator.createWorkflow(directive, {
+            projectId: project.id,
+            projectName: project.name
+          });
+
+          const { workflowId, workflow } = createResult || {};
+          console.log(`[BOARDROOM] Background workflow created ${workflowId} for project ${project.name} with ${workflow && workflow.tasks ? workflow.tasks.length : 0} tasks`);
+
+          // If we created a placeholder row, try to update it with real workflow info
+          if (placeholderWorkflow) {
+            try {
+              await Workflow.update({
+                status: workflow && workflow.status ? workflow.status : 'in_progress',
+                tasks: workflow && workflow.tasks ? workflow.tasks : [],
+                artifacts: workflow && workflow.artifacts ? workflow.artifacts : [],
+                estimates: workflow && workflow.estimates ? workflow.estimates : {}
+              }, { where: { id: placeholderWorkflow.id } }).catch(() => null);
+            } catch (uerr) {
+              console.warn('[BOARDROOM] Failed to update placeholder workflow with real data:', uerr && uerr.message);
+            }
+          }
+
+          if (collaborationDepartments && collaborationDepartments.length > 1) {
+            console.log('[BOARDROOM] Collaboration departments:', collaborationDepartments.join(', '));
+          }
+        } catch (bgErr) {
+          console.error('[BOARDROOM] Background createWorkflow failed:', bgErr && bgErr.message);
+        }
+      });
+
+      // Immediately return to the client so UI doesn't hang
+      return res.status(202).json({
         success: true,
-        workflowId: workflowId,
+        message: 'Workflow creation started (processing in background). You will receive updates via the BoardRoom feed when ready.',
         projectId: project.id,
-        projectName: project.name,
-        message: 'REAL autonomous workflow initiated successfully',
-        estimatedCompletion: workflow.estimates.explanation,
-        tasks: workflow.tasks.length,
-        agents: workflow.estimates.availableAgents,
+        workflowId: placeholderWorkflow ? placeholderWorkflow.id : `pending-${Date.now()}`,
         collaborationDetected: (collaborationDepartments.length > 1),
         collaborationDepartments
       });
