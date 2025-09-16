@@ -1,11 +1,18 @@
 const { Umzug, SequelizeStorage } = require('umzug');
 const path = require('path');
-const { sequelize } = require('./models');
+const { sequelize, Sequelize } = require('./models');
 
 async function runMigrations() {
   const umzug = new Umzug({
     migrations: { glob: path.join(__dirname, 'migrations', '*.js') },
-    context: sequelize.getQueryInterface(),
+    // Provide both queryInterface and Sequelize constructor in context so
+    // migrations have access to DataTypes, literal, and other Sequelize
+    // utilities if they prefer. Migrations can destructure either `context`
+    // or expect `context.queryInterface` and `context.Sequelize`.
+    context: {
+      queryInterface: sequelize.getQueryInterface(),
+      Sequelize
+    },
     storage: new SequelizeStorage({ sequelize }),
     logger: console
   });

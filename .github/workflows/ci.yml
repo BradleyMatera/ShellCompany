@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache root node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Cache client node modules
+        uses: actions/cache@v4
+        with:
+          path: client/node_modules
+          key: client-${{ runner.os }}-node-${{ hashFiles('client/package-lock.json') }}
+
+      - name: Cache server node modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-${{ runner.os }}-node-${{ hashFiles('server/package-lock.json') }}
+
+      - name: Install client deps
+        run: |
+          cd client && npm ci
+
+      - name: Install server deps
+        run: |
+          cd server && npm ci
+
+      - name: Run client lint
+        run: |
+          cd client && if npm run | grep -q "lint"; then npm run lint; else echo "No client lint script"; fi
+
+      - name: Run server lint
+        run: |
+          cd server && if npm run | grep -q "lint"; then npm run lint; else echo "No server lint script"; fi
+
+      - name: Run migrations (server)
+        run: |
+          cd server && npm run migrate
+
+      - name: Build client
+        run: |
+          cd client && npm run build
+
+      - name: Run server tests
+        run: |
+          cd server && npm test
+
+      - name: Run reconcile integration test
+        run: |
+          cd server && npm run test:reconcile
+
+      - name: Run artifact integration tests
+        run: |
+          cd server && node test_artifact_file_endpoint_integration.js && node test_artifact_file_endpoint_auth_unauth.js && node test_artifact_file_endpoint_auth_forbidden.js && node test_artifact_file_endpoint_audit.js
+
+    # end of steps
