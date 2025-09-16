@@ -11,32 +11,35 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Easy to Use',
+    title: 'Autonomous AI Workforce',
     Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
+        A complete ecosystem of 37+ specialized AI agents working together seamlessly.
+        From creative design to full-stack development, our agents handle complex
+        projects with minimal human oversight.
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
+    title: 'Intelligent Workflow Orchestration',
     Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
+        Smart task routing through our <strong>Board Room → Analysis → Execution → Review</strong> cycle.
+        Built-in quality gates ensure every project meets enterprise standards
+        before delivery.
       </>
     ),
   },
   {
-    title: 'Powered by React',
+    title: 'Enterprise-Grade Architecture',
     Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
+        Built with React, Node.js, and PostgreSQL. Features real-time monitoring,
+        automated deployments, and comprehensive security. Scales from startup
+        to enterprise with robust performance metrics.
       </>
     ),
   },
