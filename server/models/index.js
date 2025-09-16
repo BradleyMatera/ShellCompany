@@ -67,6 +67,20 @@ Run.belongsTo(Project, { foreignKey: 'project_id' });
 Project.hasMany(Artifact, { foreignKey: 'project_id' });
 Artifact.belongsTo(Project, { foreignKey: 'project_id' });
 
+// Workflow associations - workflows are linked to projects via metadata
+// Note: This is a "soft" association since metadata is JSON and doesn't use FK constraints
+// We'll handle the relationship in application logic
+Project.hasMany(Workflow, {
+  foreignKey: 'project_id',
+  sourceKey: 'id',
+  as: 'workflows',
+  constraints: false,
+  scope: {
+    // This scope isn't used since we need to query JSON metadata
+    // The actual association logic is handled in queries
+  }
+});
+
 // Initialize database function
 async function initializeDatabase() {
   try {

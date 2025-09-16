@@ -46,6 +46,7 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testTimeout": 20000
+    "testTimeout": 20000,
+    "setupFilesAfterEnv": ["<rootDir>/test/jest.setup.js", "<rootDir>/test/jest.teardown.js"]
   }
 }

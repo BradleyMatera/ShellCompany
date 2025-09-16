@@ -26,7 +26,31 @@ Quick recovery if you see `SQLITE_CONSTRAINT: FOREIGN KEY constraint failed` dur
 1. Stop the application/process.
 2. Inspect the full error in the server logs to identify which table/operation failed.
 3. If this is a local dev DB you can reset by removing `server/shellcompany.db` and re-running the app (data will be lost).
-	- Example: `rm server/shellcompany.db && cd server && npm run dev`
+   - Example: `rm server/shellcompany.db && cd server && npm run dev`
 4. For production, **do not** delete the DB. Instead: restore from backup, run the relevant migration manually, or run a non-destructive migration that adds required FK-compatible changes.
 
 If you want, I can add a small Umzug migration scaffold and a CI job to safely run migrations; tell me which migration tool you prefer and I will wire it up.
+
+## Shutdown and test lifecycle (important for CI)
+
+To make sure Jest exits cleanly and CI does not report open handles, follow these rules:
+
+- Gate background loops when running tests: `if (process.env.NODE_ENV !== 'test') { ... }`.
+- For services that must run background loops in test suites, expose a `shutdown()` method that clears intervals/timeouts and stops processing.
+- The application entrypoint exposes `app.shutdown()` which coordinates service shutdown. Tests should call it in an `afterAll` hook.
+
+Example test teardown:
+
+```js
+afterAll(async () => {
+  if (app && typeof app.shutdown === 'function') {
+    await app.shutdown();
+  }
+});
+```
+
+Test command recommended for local validation with handle detection:
+
+```bash
+NODE_ENV=test npm test -- --runInBand --detectOpenHandles --verbose
+```

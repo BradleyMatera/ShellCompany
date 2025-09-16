@@ -55,7 +55,10 @@ class AutonomousWorkflowSystem {
     this.maxConcurrentAgents = 8;
     this.isRunning = false;
 
-    this.setupEventHandlers();
+    // Only set up event handlers and start file watching if not running under test
+    if (process.env.NODE_ENV !== 'test') {
+      this.setupEventHandlers();
+    }
   }
 
   setupEventHandlers() {
@@ -71,6 +74,23 @@ class AutonomousWorkflowSystem {
     }
 
     this.fileWatcher.startWatching();
+  }
+
+  // Graceful shutdown for tests and controlled environments
+  async shutdown() {
+    try {
+      if (this.fileWatcher && typeof this.fileWatcher.stopWatching === 'function') {
+        this.fileWatcher.stopWatching();
+      }
+
+      // stop any running work queue loops
+      this.isRunning = false;
+      this.workQueue = [];
+      this.activeWorkflows.clear();
+      this.completedTasks = [];
+    } catch (e) {
+      // ignore errors during shutdown
+    }
   }
 
   async handleWorkflowRequest(request, socket) {

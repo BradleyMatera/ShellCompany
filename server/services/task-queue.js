@@ -17,10 +17,14 @@ class TaskQueue {
     this.persistentStorage = new Map();
 
     // Start processing
-    this.startProcessing();
+    // Auto-start processing and periodic cleanup unless running in test environment.
+    // Tests should control lifecycle explicitly to avoid background timers during module load.
+    if (process.env.NODE_ENV !== 'test') {
+      this.startProcessing();
 
-  // Periodic cleanup - keep id so tests can clear it
-  this.cleanupInterval = setInterval(() => this.cleanup(), 60000); // Every minute
+      // Periodic cleanup - keep id so tests can clear it
+      this.cleanupInterval = setInterval(() => this.cleanup(), 60000); // Every minute
+    }
   }
 
   // Add task to queue

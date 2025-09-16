@@ -21,57 +21,32 @@ const BoardRoom = ({ state, setState }) => {
   const milestones = state.milestones;
   // (milestones may be displayed elsewhere) - no-op to avoid lint noise
 
-  const agents = [
-    {
-      name: 'Alex',
-      role: 'Project Manager',
-      avatar: '👨‍💼',
-      status: 'available',
-      specialty: ['planning', 'coordination', 'risk-management']
-    },
-    {
-      name: 'Ivy',
-      role: 'Tech Writer',
-      avatar: '✍️',
-      status: 'available',
-      specialty: ['documentation', 'content', 'communication']
-    },
-    {
-      name: 'Pixel',
-      role: 'Designer',
-      avatar: '🎨',
-      status: 'available',
-      specialty: ['ui-design', 'branding', 'user-experience']
-    },
-    {
-      name: 'Nova',
-      role: 'Frontend Developer',
-      avatar: '⚛️',
-      status: 'busy',
-      specialty: ['react', 'typescript', 'frontend']
-    },
-    {
-      name: 'Zephyr',
-      role: 'Backend Developer',
-      avatar: '🔧',
-      status: 'available',
-      specialty: ['apis', 'databases', 'backend']
-    },
-    {
-      name: 'Cipher',
-      role: 'Security Engineer',
-      avatar: '🔒',
-      status: 'available',
-      specialty: ['security', 'authentication', 'compliance']
-    },
-    {
-      name: 'Sage',
-      role: 'DevOps Engineer',
-      avatar: '🚀',
-      status: 'available',
-      specialty: ['deployment', 'infrastructure', 'monitoring']
-    }
-  ];
+  // Dynamic agent roster - fetch from API
+  const [agents, setAgents] = useState([]);
+
+  // Fetch agents from API
+  useEffect(() => {
+    const fetchAgents = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/api/agents', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAgents(data.agents || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch agents for BoardRoom:', error);
+        // Fallback to prevent UI breaks
+        setAgents([]);
+      }
+    };
+
+    fetchAgents();
+    // Refresh agents periodically
+    const interval = setInterval(fetchAgents, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     // Connect to the autonomous workflow system
@@ -397,7 +372,8 @@ const BoardRoom = ({ state, setState }) => {
       });
 
       if (response.ok) {
-        const result = await response.json();
+        // Read response body for logging/debug if provided, but we don't need fields here
+        await response.json().catch(() => null);
         setState(prev => ({
           ...prev,
           messages: [...prev.messages, {
@@ -473,7 +449,13 @@ const BoardRoom = ({ state, setState }) => {
         });
         if (!r.ok) return null;
         const body = await r.json();
-        return body;
+        // API returns { workflow: { ... } } — normalize to return the workflow object
+        const wf = (body && body.workflow) ? body.workflow : body;
+        if (wf) {
+          // ensure frontend code can reference workflowId consistently
+          wf.workflowId = wf.workflowId || wf.id || wf.workflowId;
+        }
+        return wf;
       } catch (e) {
         console.warn('Failed to fetch workflow details', e && e.message);
         return null;
@@ -618,7 +600,7 @@ const BoardRoom = ({ state, setState }) => {
                         <span className="stat-label">Tasks</span>
                       </span>
                       <span className="stat-item">
-                        <span className="stat-value">{currentWorkflow.estimates?.availableAgents || 6}</span>
+                        <span className="stat-value">{currentWorkflow.estimates?.availableAgents || agents.length || 37}</span>
                         <span className="stat-label">Agents</span>
                       </span>
                       {projectBrief?.artifactsCount > 0 && (
@@ -636,7 +618,9 @@ const BoardRoom = ({ state, setState }) => {
                       <div className="stage-icon">📋</div>
                       <div className="stage-info">
                         <div className="stage-title">Manager Brief</div>
-                        <div className="stage-agents">Sage, Alex, Zephyr</div>
+                        <div className="stage-agents">
+                          {agents.filter(a => a.canManage).slice(0, 3).map(a => a.name).join(', ') || 'Managers'}
+                        </div>
                       </div>
                       <div className="stage-status">
                         {currentWorkflow?.status === 'awaiting_clarification' ? 'active' :
@@ -648,7 +632,9 @@ const BoardRoom = ({ state, setState }) => {
                       <div className="stage-icon">👨‍💻</div>
                       <div className="stage-info">
                         <div className="stage-title">Specialist Tasks</div>
-                        <div className="stage-agents">Nova, Pixel, Cipher</div>
+                        <div className="stage-agents">
+                          {agents.filter(a => !a.canManage && a.department === 'Engineering').slice(0, 3).map(a => a.name).join(', ') || 'Specialists'}
+                        </div>
                       </div>
                       <div className="stage-status">
                         {['in_progress', 'executing'].includes(currentWorkflow?.status) ? 'active' :

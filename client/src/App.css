@@ -64,6 +64,58 @@
   color: #fff;
 }
 
+.agent-status {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  overflow-x: auto;
+  max-width: 500px;
+}
+
+.agent-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+  min-width: fit-content;
+}
+
+.agent-indicator:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.agent-indicator.busy {
+  border-color: var(--color-warning);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
+}
+
+.agent-indicator.idle {
+  border-color: var(--border-color);
+}
+
+.agent-indicator.active {
+  border-color: var(--color-success);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.3);
+}
+
+.agent-avatar {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.agent-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .app-main {
   flex: 1;
   overflow: auto;

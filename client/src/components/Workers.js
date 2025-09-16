@@ -206,20 +206,66 @@ const Workers = () => {
       )}
 
       <div className="workers-content">
-        {/* REAL AUTONOMOUS AGENTS SECTION */}
+        {/* REAL AUTONOMOUS AGENTS SECTION - 36 AGENTS ORGANIZED BY DEPARTMENT */}
         <div className="agents-section">
-          <h3>🤖 Autonomous Agents</h3>
+          <div className="agents-header">
+            <h3>🤖 Autonomous Company Agents ({agents.length})</h3>
+            <div className="agents-stats">
+              <span className="stat-item">
+                <span className="stat-value">{agents.filter(a => a.status === 'busy').length}</span>
+                <span className="stat-label">Active</span>
+              </span>
+              <span className="stat-item">
+                <span className="stat-value">{agents.filter(a => a.status === 'idle').length}</span>
+                <span className="stat-label">Idle</span>
+              </span>
+              <span className="stat-item">
+                <span className="stat-value">{agents.filter(a => a.canManage).length}</span>
+                <span className="stat-label">Managers</span>
+              </span>
+              <span className="stat-item">
+                <span className="stat-value">{[...new Set(agents.map(a => a.department))].filter(Boolean).length}</span>
+                <span className="stat-label">Departments</span>
+              </span>
+            </div>
+          </div>
+
           {agents.length === 0 ? (
             <div className="agents-empty">
-              <p>No autonomous agents found</p>
+              <p>Loading autonomous agents...</p>
               <p className="agents-help">
-                Autonomous agents (Alex, Nova, Pixel, Zephyr, Cipher, Sage) will appear here with their
+                37 autonomous agents across 7 departments will appear here with their
                 current status, assigned tasks, and specializations.
               </p>
             </div>
           ) : (
-            <div className="agents-grid">
-              {agents.map((agent, idx) => (
+            <div className="departments-container">
+              {[...new Set(agents.map(a => a.department))].filter(Boolean).sort().map(department => {
+                const departmentAgents = agents.filter(a => a.department === department);
+                return (
+                  <div key={department} className="department-section">
+                    <div className="department-header">
+                      <h4 className="department-title">
+                        {department === 'Leadership' ? '👑' :
+                         department === 'Engineering' ? '⚡' :
+                         department === 'Design' ? '🎨' :
+                         department === 'Data & AI' ? '🤖' :
+                         department === 'Product' ? '💡' :
+                         department === 'Business' ? '💼' :
+                         department === 'Quality' ? '🔍' : '🏢'}
+                        {department} ({departmentAgents.length})
+                      </h4>
+                      <div className="department-stats">
+                        {departmentAgents.filter(a => a.canManage).length > 0 && (
+                          <span className="manager-count">
+                            {departmentAgents.filter(a => a.canManage).length} managers
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="agents-grid">
+                      {departmentAgents.map((agent, idx) => (
                 <div
                   key={agent.id || agent.name || idx}
                   className={`agent-card ${agent.status}`}
@@ -274,8 +320,18 @@ const Workers = () => {
                       ))}
                     </div>
                   </div>
+
+                  {agent.canManage && (
+                    <div className="manager-badge-card">
+                      <span className="manager-text">👑 Manager</span>
+                    </div>
+                  )}
                 </div>
               ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

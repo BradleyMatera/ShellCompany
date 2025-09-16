@@ -126,6 +126,27 @@ class AgentCapabilityHarness {
         }
       }
 
+      // If the provider returned textual content but no artifacts were extracted,
+      // create a lightweight 'report' artifact so the frontend has something to show
+      // (useful for brainstorms and plain-text outputs).
+      if ((!result.artifacts || result.artifacts.length === 0) && result.content && result.content.trim().length > 0) {
+        const textArtifact = {
+          id: uuidv4(),
+          type: 'report',
+          title: `${this.agentName} output - ${workflowId}`,
+          preview: result.content.length > 200 ? result.content.substring(0, 200) + '...' : result.content,
+          content: result.content,
+          timestamp: Date.now()
+        };
+
+        // persist artifact to agent's artifact store and on-disk
+        await this.storeArtifact(textArtifact, workflowId);
+
+        // ensure result.artifacts array includes the generated artifact
+        result.artifacts = result.artifacts || [];
+        result.artifacts.push(textArtifact);
+      }
+
       return {
         success: true,
         taskId,

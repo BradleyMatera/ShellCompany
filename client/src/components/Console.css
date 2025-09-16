@@ -62,8 +62,13 @@
 .console-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+
+.filter-select.agent-filter,
+.filter-select.department-filter {
+  min-width: 120px;
 }
 
 .filter-select {
@@ -209,6 +214,40 @@
   flex: 1;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+/* Agent tagging styles */
+.console-agent-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-right: 8px;
+  border: 1px solid currentColor;
+  opacity: 0.9;
+}
+
+.console-agent-tag .agent-icon {
+  font-size: 12px;
+}
+
+.console-agent-tag .agent-name {
+  font-weight: 600;
+}
+
+.console-agent-tag .agent-department {
+  font-size: 10px;
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.console-agent-tag .manager-badge {
+  font-size: 10px;
+  margin-left: 2px;
 }
 
 .console-info {

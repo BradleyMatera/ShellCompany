@@ -120,6 +120,21 @@ app.get('/api/console/logs', (req, res) => {
   res.json({ logs: consoleLogger.getLogBuffer() });
 });
 
+// Expose a shutdown helper for tests to clear any running companyRuns timer
+if (typeof module.exports.shutdown !== 'function') {
+  module.exports.shutdown = async function shutdownServerAuth() {
+    try {
+      if (companyRuns && companyRuns.timer) {
+        try { clearInterval(companyRuns.timer); } catch (e) {}
+        companyRuns.timer = null;
+        companyRuns.active = false;
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+}
+
 // REAL AUTONOMOUS AGENTS STATUS API
 app.get('/api/agents', async (req, res) => {
   res.setHeader('Content-Type', 'application/json');

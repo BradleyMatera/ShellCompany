@@ -5,6 +5,9 @@ import './Console.css';
 const Console = ({ logs, setLogs, isConnected, setIsConnected }) => {
   const [autoScroll, setAutoScroll] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [agentFilter, setAgentFilter] = useState('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [agents, setAgents] = useState([]);
   const logsEndRef = useRef(null);
   const consoleRef = useRef(null);
 
@@ -46,6 +49,24 @@ const Console = ({ logs, setLogs, isConnected, setIsConnected }) => {
       ]);
     }
   }, [setLogs]);
+
+  // Fetch agents for filtering
+  useEffect(() => {
+    const fetchAgents = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/api/agents', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAgents(data.agents || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch agents for Console:', error);
+      }
+    };
+    fetchAgents();
+  }, []);
 
   useEffect(() => {
     // Connect to WebSocket for real-time logs
@@ -142,14 +163,54 @@ const Console = ({ logs, setLogs, isConnected, setIsConnected }) => {
   };
 
   const filteredLogs = logs.filter(log => {
-    if (filter === 'all') return true;
-    if (filter === 'errors') return log.level === 'error' || log.level === 'stderr';
-    if (filter === 'warnings') return log.level === 'warn';
-    return log.level === filter;
+    // Level filter
+    let levelMatch = true;
+    if (filter !== 'all') {
+      if (filter === 'errors') {
+        levelMatch = log.level === 'error' || log.level === 'stderr';
+      } else if (filter === 'warnings') {
+        levelMatch = log.level === 'warn';
+      } else {
+        levelMatch = log.level === filter;
+      }
+    }
+
+    // Agent filter
+    let agentMatch = true;
+    if (agentFilter !== 'all') {
+      agentMatch = log.agent === agentFilter || log.source === agentFilter;
+    }
+
+    // Department filter
+    let departmentMatch = true;
+    if (departmentFilter !== 'all') {
+      const agent = agents.find(a => a.name === (log.agent || log.source));
+      departmentMatch = agent?.department === departmentFilter;
+    }
+
+    return levelMatch && agentMatch && departmentMatch;
   });
 
   const formatTimestamp = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString();
+  };
+
+  const getAgentInfo = (agentName) => {
+    return agents.find(a => a.name === agentName);
+  };
+
+  const getRoleColor = (agent) => {
+    if (!agent) return '#666';
+    if (agent.canManage) return '#3b82f6'; // Blue for managers
+    switch (agent.department) {
+      case 'Engineering': return '#10b981'; // Green
+      case 'Design': return '#8b5cf6'; // Purple
+      case 'Data & AI': return '#f59e0b'; // Orange
+      case 'Product': return '#06b6d4'; // Cyan
+      case 'Business': return '#ef4444'; // Red
+      case 'Quality': return '#84cc16'; // Lime
+      default: return '#6b7280'; // Gray
+    }
   };
 
   return (
@@ -166,18 +227,44 @@ const Console = ({ logs, setLogs, isConnected, setIsConnected }) => {
         </div>
         
         <div className="console-controls">
-          <select 
-            value={filter} 
+          <select
+            value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="filter-select"
           >
-            <option value="all">All Logs</option>
+            <option value="all">All Levels</option>
             <option value="log">Console Logs</option>
             <option value="info">Info</option>
             <option value="warn">Warnings</option>
             <option value="errors">Errors</option>
             <option value="stdout">Stdout</option>
             <option value="stderr">Stderr</option>
+          </select>
+
+          <select
+            value={agentFilter}
+            onChange={(e) => setAgentFilter(e.target.value)}
+            className="filter-select agent-filter"
+          >
+            <option value="all">All Agents</option>
+            {agents.map(agent => (
+              <option key={agent.name} value={agent.name}>
+                {agent.icon} {agent.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+            className="filter-select department-filter"
+          >
+            <option value="all">All Departments</option>
+            {[...new Set(agents.map(a => a.department))].filter(Boolean).map(dept => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
           </select>
           
           <label className="auto-scroll-toggle">
@@ -219,25 +306,44 @@ const Console = ({ logs, setLogs, isConnected, setIsConnected }) => {
             </div>
           </div>
         ) : (
-          filteredLogs.map(log => (
-            <div key={log.id} className={`console-line ${log.level}`}>
-              <span className="console-timestamp">
-                {formatTimestamp(log.timestamp)}
-              </span>
-              <span 
-                className="console-level"
-                style={{ color: getLogLevelColor(log.level) }}
-              >
-                [{log.level.toUpperCase()}]
-              </span>
-              <span className="console-source">
-                {log.source}
-              </span>
-              <span className="console-message">
-                {log.message}
-              </span>
-            </div>
-          ))
+          filteredLogs.map(log => {
+            const agentInfo = getAgentInfo(log.agent || log.source);
+            const roleColor = getRoleColor(agentInfo);
+
+            return (
+              <div key={log.id} className={`console-line ${log.level}`}>
+                <span className="console-timestamp">
+                  {formatTimestamp(log.timestamp)}
+                </span>
+                <span
+                  className="console-level"
+                  style={{ color: getLogLevelColor(log.level) }}
+                >
+                  [{log.level.toUpperCase()}]
+                </span>
+
+                {agentInfo && (
+                  <span className="console-agent-tag" style={{ color: roleColor }}>
+                    <span className="agent-icon">{agentInfo.icon}</span>
+                    <span className="agent-name">{agentInfo.name}</span>
+                    {agentInfo.department && (
+                      <span className="agent-department">({agentInfo.department})</span>
+                    )}
+                    {agentInfo.canManage && (
+                      <span className="manager-badge">👑</span>
+                    )}
+                  </span>
+                )}
+
+                <span className="console-source">
+                  {log.source}
+                </span>
+                <span className="console-message">
+                  {log.message}
+                </span>
+              </div>
+            );
+          })
         )}
         <div ref={logsEndRef} />
       </div>
