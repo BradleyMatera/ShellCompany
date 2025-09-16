@@ -9,7 +9,7 @@
     "start": "node index.js",
     "start:auth": "node server-auth.js",
     "start:production": "node scripts/start-production.js",
-    "test": "echo \"Production ready autonomous service\" && exit 0",
+  "test": "jest --runInBand",
     "test:reconcile": "node test_reconcile_integration.js",
     "migrate": "node migration-runner.js"
   },
@@ -41,6 +41,11 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3",
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testTimeout": 20000
   }
 }

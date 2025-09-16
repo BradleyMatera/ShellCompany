@@ -99,8 +99,8 @@ const AIProject = () => {
             <div className="technologies">
               <h3>Technologies</h3>
               <div className="tech-tags">
-                {projectInfo.project.technologies.map(tech => (
-                  <span key={tech} className="tech-tag">{tech}</span>
+                {projectInfo.project.technologies.map((tech, idx) => (
+                  <span key={`${tech}-${idx}`} className="tech-tag">{tech}</span>
                 ))}
               </div>
             </div>
@@ -111,8 +111,8 @@ const AIProject = () => {
       <div className="agents-overview">
         <h2>AI Agents Team</h2>
         <div className="agents-grid">
-          {agents.map(agent => (
-            <div key={agent.id} className="agent-card">
+          {agents.map((agent, idx) => (
+            <div key={agent.id || agent.name || idx} className="agent-card">
               <div className="agent-header">
                 <div className="agent-avatar">{agent.avatar}</div>
                 <div className="agent-info">
@@ -135,8 +135,8 @@ const AIProject = () => {
                 <div className="specialties">
                   <strong>Specialties:</strong>
                   <div className="specialty-tags">
-                    {(agent.specialties || []).map(specialty => (
-                      <span key={specialty} className="specialty-tag">{specialty}</span>
+                    {(agent.specialties || []).map((specialty, idx) => (
+                      <span key={`${specialty}-${idx}`} className="specialty-tag">{specialty}</span>
                     ))}
                   </div>
                 </div>

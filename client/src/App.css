@@ -1,3 +1,5 @@
+@import './styles/design-tokens.css';
+
 * {
   margin: 0;
   padding: 0;
@@ -6,20 +8,20 @@
 
 .App {
   height: 100vh;
-  background: #0a0a0a;
-  color: #fff;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-family);
 }
 
 .app-nav {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 24px;
-  background: #1a1a1a;
-  border-bottom: 1px solid #333;
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .nav-brand h1 {
@@ -64,7 +66,8 @@
 
 .app-main {
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
+  height: 0; /* Allow flex child to shrink */
 }
 
 .console-panel {

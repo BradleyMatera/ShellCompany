@@ -506,6 +506,74 @@ router.post('/workflows/:workflowId/approve', ensureAuth, async (req, res) => {
   }
 });
 
+// Clarification response endpoint - answer clarifying questions to proceed with workflow
+router.post('/workflows/:workflowId/clarify', ensureAuth, async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const { responses } = req.body || {};
+    const orchestrator = req.app.locals.orchestrator;
+
+    if (!orchestrator) return res.status(500).json({ error: 'orchestrator not available' });
+    if (!responses || typeof responses !== 'object') {
+      return res.status(400).json({ error: 'responses object required' });
+    }
+
+    const result = await orchestrator.respondToClarification(workflowId, responses);
+    return res.json({ success: true, status: result.status, clarificationResponses: result.clarificationResponses });
+  } catch (e) {
+    console.error('Failed to record clarification responses:', e && e.message);
+    res.status(500).json({ error: 'failed_to_record_clarifications', detail: e && e.message });
+  }
+});
+
+// Proceed without answers endpoint - manager chooses to continue without clarification answers
+router.post('/workflows/:workflowId/proceed-without-answers', ensureAuth, async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const { managerDecision } = req.body || {};
+    const orchestrator = req.app.locals.orchestrator;
+
+    if (!orchestrator) return res.status(500).json({ error: 'orchestrator not available' });
+
+    const result = await orchestrator.proceedWithoutAnswers(workflowId, managerDecision || 'Proceeding without clarification answers');
+    return res.json({ success: true, status: result.status });
+  } catch (e) {
+    console.error('Failed to proceed without answers:', e && e.message);
+    res.status(500).json({ error: 'failed_to_proceed_without_answers', detail: e && e.message });
+  }
+});
+
+// Reject workflow endpoint - manager or CEO rejects workflow
+router.post('/workflows/:workflowId/reject', ensureAuth, async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const { rejector, reason } = req.body || {};
+    const orchestrator = req.app.locals.orchestrator;
+
+    if (!orchestrator) return res.status(500).json({ error: 'orchestrator not available' });
+
+    // For now, we'll implement rejection by recording a negative CEO approval
+    const result = await orchestrator.recordCeoApproval(workflowId, rejector || 'manager', false);
+
+    // Add rejection reason to workflow metadata if provided
+    if (reason) {
+      const workflow = orchestrator.getWorkflowStatus(workflowId);
+      if (workflow) {
+        workflow.metadata = workflow.metadata || {};
+        workflow.metadata.rejectionReason = reason;
+        workflow.metadata.rejectedBy = rejector || 'manager';
+        workflow.metadata.rejectedAt = new Date();
+        workflow.status = 'rejected';
+      }
+    }
+
+    return res.json({ success: true, rejected: true, reason });
+  } catch (e) {
+    console.error('Failed to reject workflow:', e && e.message);
+    res.status(500).json({ error: 'failed_to_reject_workflow', detail: e && e.message });
+  }
+});
+
 // Get task details
 router.get('/tasks/:taskId', async (req, res) => {
   try {

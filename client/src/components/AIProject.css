@@ -1,8 +1,9 @@
 .ai-project-container {
   padding: 20px;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  min-height: 100vh;
+  height: 100%;
   color: #ffffff;
+  overflow: auto;
 }
 
 .ai-project-header {

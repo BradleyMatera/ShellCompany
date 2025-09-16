@@ -333,22 +333,84 @@ const BoardRoom = ({ state, setState }) => {
     }
   };
 
-  const handleApprove = () => {
-    const approvalMessage = {
-      id: Date.now().toString(),
-      sender: 'CEO',
-      senderRole: 'Chief Executive Officer',
-      content: '✅ **APPROVED** - Proceed with execution. Great work team!',
-      timestamp: Date.now()
-    };
-    setState(prev => ({
-      ...prev,
-      messages: [...prev.messages, approvalMessage]
-    }));
+  const handleApproveBrief = async (workflowId) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/workflows/${workflowId}/brief/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          approved: true,
+          approver: 'CEO',
+          completedBrief: {
+            requestedAgent: currentWorkflow.manager,
+            projectType: 'execution',
+            scope: 'As per brief',
+            timeline: 'Standard'
+          }
+        })
+      });
 
-    // Notify the workflow system of approval
-    if (socket) {
-      socket.emit('workflow-approval', { approved: true });
+      if (response.ok) {
+        const result = await response.json();
+        setState(prev => ({
+          ...prev,
+          messages: [...prev.messages, {
+            id: Date.now().toString(),
+            sender: 'CEO',
+            senderRole: 'Chief Executive Officer',
+            content: `✅ **BRIEF APPROVED** - ${result.scheduled} specialist tasks scheduled for execution.`,
+            timestamp: Date.now()
+          }]
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to approve brief:', error);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!currentWorkflow?.workflowId) {
+      const approvalMessage = {
+        id: Date.now().toString(),
+        sender: 'CEO',
+        senderRole: 'Chief Executive Officer',
+        content: '✅ **APPROVED** - Proceed with execution. Great work team!',
+        timestamp: Date.now()
+      };
+      setState(prev => ({
+        ...prev,
+        messages: [...prev.messages, approvalMessage]
+      }));
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:3001/api/workflows/${currentWorkflow.workflowId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          approved: true,
+          approver: 'CEO'
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setState(prev => ({
+          ...prev,
+          messages: [...prev.messages, {
+            id: Date.now().toString(),
+            sender: 'CEO',
+            senderRole: 'Chief Executive Officer',
+            content: `✅ **WORKFLOW APPROVED** - Final CEO approval granted. Workflow complete!`,
+            timestamp: Date.now()
+          }]
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to approve workflow:', error);
     }
   };
 
@@ -371,7 +433,7 @@ const BoardRoom = ({ state, setState }) => {
     }
   };
 
-  const renderArtifact = (artifact) => {
+  const renderArtifact = (artifact, uniqueKey) => {
     const iconMap = {
       link: '🔗',
       file: '📄',
@@ -380,7 +442,7 @@ const BoardRoom = ({ state, setState }) => {
     };
 
     return (
-      <div key={artifact.id} className="artifact">
+      <div key={uniqueKey || artifact.id} className="artifact">
         <span className="artifact-icon">{iconMap[artifact.type]}</span>
         <div className="artifact-content">
           <div className="artifact-title">{artifact.title}</div>
@@ -452,9 +514,11 @@ const BoardRoom = ({ state, setState }) => {
             <div className="workflow-panel">
               <div className="workflow-header">
                 <div className="workflow-title">
-                  <h4>🔄 Live Autonomous Execution</h4>
+                  <h4>🔄 ASK Manager Lifecycle</h4>
                   <div className="workflow-status">
-                    {projectBrief?.progress?.percentage === 100 ? '✅ Complete' : 
+                    {currentWorkflow.status === 'awaiting_clarification' ? '❓ Awaiting Clarification' :
+                     currentWorkflow.status === 'waiting_for_ceo_approval' ? '👑 Awaiting CEO Approval' :
+                     projectBrief?.progress?.percentage === 100 ? '✅ Complete' :
                      projectBrief?.progress?.percentage > 0 ? '🔄 Running' : '⏳ Initializing'}
                   </div>
                 </div>
@@ -465,7 +529,7 @@ const BoardRoom = ({ state, setState }) => {
                       <code className="workflow-id-display" title="Click to copy">
                         {currentWorkflow.workflowId}
                       </code>
-                      <button 
+                      <button
                         className="copy-workflow-id"
                         onClick={(event) => {
                           navigator.clipboard?.writeText(currentWorkflow.workflowId);
@@ -486,10 +550,68 @@ const BoardRoom = ({ state, setState }) => {
                 </div>
               </div>
 
+              {/* Manager Selection Display */}
+              {currentWorkflow.manager && (
+                <div className="manager-section">
+                  <div className="manager-header">
+                    <h5>📄 Project Brief</h5>
+                    <div className="manager-card">
+                      <div className="manager-avatar">
+                        {agents.find(a => a.name === currentWorkflow.manager)?.avatar || '👨‍💼'}
+                      </div>
+                      <div className="manager-info">
+                        <div className="manager-name">{currentWorkflow.manager}</div>
+                        <div className="manager-role">
+                          {agents.find(a => a.name === currentWorkflow.manager)?.role || 'Manager'}
+                        </div>
+                        <div className="manager-why" title="Why selected?">
+                          Selected for: {agents.find(a => a.name === currentWorkflow.manager)?.specialty?.join(', ') || 'Project management'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {currentWorkflow.brief && (
+                    <div className="manager-brief-panel">
+                      <div className="brief-status">
+                        {currentWorkflow.metadata?.briefApprovedAt ? '✅ Brief Approved' : '📄 Brief Created'}
+                      </div>
+                      {currentWorkflow.metadata?.clarifyingQuestions?.length > 0 && (
+                        <div className="clarification-section">
+                          <h6>Clarifying Questions</h6>
+                          <div className="clarifying-questions">
+                            {currentWorkflow.metadata.clarifyingQuestions.map((question, idx) => (
+                              <div key={idx} className="clarifying-question">
+                                <span className="question-text">Q{idx + 1}: {question}</span>
+                                {currentWorkflow.metadata?.clarificationResponses?.[question] && (
+                                  <span className="question-answer">
+                                    A: {currentWorkflow.metadata.clarificationResponses[question]}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          {!currentWorkflow.metadata?.briefApprovedAt && (
+                            <div className="brief-actions">
+                              <button className="approve-brief-btn" onClick={() => handleApproveBrief(currentWorkflow.workflowId)}>
+                                ✅ Approve Brief
+                              </button>
+                              <button className="request-changes-btn">
+                                🔄 Request Changes
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {workflowTasks.length > 0 && (
                 <div className="execution-pipeline">
                   <div className="pipeline-header">
-                    <h5>Execution Pipeline</h5>
+                    <h5>📋 ASK Manager Lifecycle Pipeline</h5>
                     <div className="pipeline-stats">
                       <span className="stat-item">
                         <span className="stat-value">{workflowTasks.length}</span>
@@ -508,32 +630,99 @@ const BoardRoom = ({ state, setState }) => {
                     </div>
                   </div>
 
+                  {/* ASK Lifecycle Pipeline Overview */}
+                  <div className="ask-lifecycle-pipeline">
+                    <div className="pipeline-stage brief-stage">
+                      <div className="stage-icon">📋</div>
+                      <div className="stage-info">
+                        <div className="stage-title">Manager Brief</div>
+                        <div className="stage-agents">Sage, Alex, Zephyr</div>
+                      </div>
+                      <div className="stage-status">
+                        {currentWorkflow?.status === 'awaiting_clarification' ? 'active' :
+                         currentWorkflow?.status === 'planned' ? 'pending' : 'completed'}
+                      </div>
+                    </div>
+
+                    <div className="pipeline-stage specialist-stage">
+                      <div className="stage-icon">👨‍💻</div>
+                      <div className="stage-info">
+                        <div className="stage-title">Specialist Tasks</div>
+                        <div className="stage-agents">Nova, Pixel, Cipher</div>
+                      </div>
+                      <div className="stage-status">
+                        {['in_progress', 'executing'].includes(currentWorkflow?.status) ? 'active' :
+                         ['awaiting_clarification', 'planned'].includes(currentWorkflow?.status) ? 'pending' : 'completed'}
+                      </div>
+                    </div>
+
+                    <div className="pipeline-stage review-stage">
+                      <div className="stage-icon">✅</div>
+                      <div className="stage-info">
+                        <div className="stage-title">Manager Review</div>
+                        <div className="stage-agents">Quality Assurance</div>
+                      </div>
+                      <div className="stage-status">
+                        {currentWorkflow?.status === 'waiting_for_ceo_approval' ? 'completed' : 'pending'}
+                      </div>
+                    </div>
+
+                    <div className="pipeline-stage ceo-stage">
+                      <div className="stage-icon">🏛️</div>
+                      <div className="stage-info">
+                        <div className="stage-title">CEO Approval</div>
+                        <div className="stage-agents">Final Sign-off</div>
+                      </div>
+                      <div className="stage-status">
+                        {currentWorkflow?.status === 'completed' ? 'completed' :
+                         currentWorkflow?.status === 'waiting_for_ceo_approval' ? 'active' : 'pending'}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="pipeline-visualization">
                     {workflowTasks.map((task, idx) => {
                       const isActive = task.status === 'running';
                       const isCompleted = task.status === 'completed';
                       const isFailed = task.status === 'failed';
-                      const isNext = !isCompleted && !isFailed && !isActive && 
+                      const isNext = !isCompleted && !isFailed && !isActive &&
                         idx === workflowTasks.findIndex(t => !['completed', 'failed'].includes(t.status));
 
+                      // Determine task phase in ASK lifecycle
+                      const getTaskPhase = (task) => {
+                        if (task.type === 'manager_brief') return 'brief';
+                        if (task.type === 'manager_review') return 'review';
+                        return 'execute';
+                      };
+
+                      const taskPhase = getTaskPhase(task);
+
                       return (
-                        <div key={task.id || idx} className={`pipeline-task ${task.status || 'pending'} ${isNext ? 'next' : ''}`}>
+                        <div key={task.id || idx} className={`pipeline-task ${task.status || 'pending'} ${isNext ? 'next' : ''} phase-${taskPhase}`}>
                           <div className="task-indicator">
-                            <div className="task-step">{idx + 1}</div>
+                            <div className="task-step">
+                              {taskPhase === 'brief' ? '📄' :
+                               taskPhase === 'review' ? '🔍' :
+                               idx + 1}
+                            </div>
                             {isActive && <div className="active-pulse"></div>}
                           </div>
-                          
+
                           <div className="task-details">
                             <div className="task-header-row">
-                              <h6 className="task-name">{task.title}</h6>
+                              <h6 className="task-name">
+                                {task.type === 'manager_brief' ? `📄 Manager Brief` :
+                                 task.type === 'manager_review' ? `🔍 Manager Review` :
+                                 task.title}
+                              </h6>
                               <div className="task-status-badge">
-                                {isCompleted ? '✅ Done' : 
-                                 isActive ? '🔄 Running' : 
-                                 isFailed ? '❌ Failed' : 
+                                {isCompleted ? '✅ Done' :
+                                 isActive ? '🔄 Running' :
+                                 isFailed ? '❌ Failed' :
                                  isNext ? '⚡ Next' : '⏳ Queued'}
                               </div>
                             </div>
-                            
+
                             <div className="task-assignment-row">
                               <div className="assigned-agent">
                                 <div className="agent-avatar">
@@ -542,11 +731,13 @@ const BoardRoom = ({ state, setState }) => {
                                 <span className="agent-info">
                                   <span className="agent-name">{task.assignedAgent}</span>
                                   <span className="agent-role">
-                                    {agents.find(a => a.name === task.assignedAgent)?.role || 'Agent'}
+                                    {task.type === 'manager_brief' ? 'Manager' :
+                                     task.type === 'manager_review' ? 'Manager' :
+                                     agents.find(a => a.name === task.assignedAgent)?.role || 'Specialist'}
                                   </span>
                                 </span>
                               </div>
-                              
+
                               {task.actualDuration && (
                                 <div className="task-duration">
                                   <span className="duration-value">
@@ -554,7 +745,7 @@ const BoardRoom = ({ state, setState }) => {
                                   </span>
                                 </div>
                               )}
-                              
+
                               {task.estimatedDuration && !task.actualDuration && (
                                 <div className="task-estimate">
                                   <span className="estimate-value">
@@ -563,9 +754,32 @@ const BoardRoom = ({ state, setState }) => {
                                 </div>
                               )}
                             </div>
-                            
+
+                            {task.type === 'manager_brief' && task.briefMeta?.clarifyingQuestions && (
+                              <div className="task-metadata">
+                                <span className="metadata-item">
+                                  {task.briefMeta.clarifyingQuestions.length} clarifying questions
+                                </span>
+                              </div>
+                            )}
+
+                            {task.type === 'manager_review' && (
+                              <div className="task-metadata">
+                                <span className="metadata-item">
+                                  Reviews all specialist deliverables
+                                </span>
+                              </div>
+                            )}
+
                             {idx < workflowTasks.length - 1 && (
-                              <div className={`task-connector ${isCompleted ? 'completed' : ''}`}></div>
+                              <div className={`task-connector ${isCompleted ? 'completed' : ''}`}>
+                                {taskPhase === 'brief' && workflowTasks[idx + 1]?.type !== 'manager_brief' && (
+                                  <div className="phase-transition">Brief → Execute</div>
+                                )}
+                                {taskPhase === 'execute' && workflowTasks[idx + 1]?.type === 'manager_review' && (
+                                  <div className="phase-transition">Execute → Review</div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -576,12 +790,12 @@ const BoardRoom = ({ state, setState }) => {
                   {projectBrief?.progress && (
                     <div className="execution-progress">
                       <div className="progress-header">
-                        <span className="progress-title">Overall Progress</span>
+                        <span className="progress-title">ASK Lifecycle Progress</span>
                         <span className="progress-percentage">{projectBrief.progress.percentage}%</span>
                       </div>
                       <div className="progress-track">
-                        <div 
-                          className="progress-indicator" 
+                        <div
+                          className="progress-indicator"
                           style={{ width: `${projectBrief.progress.percentage}%` }}
                         ></div>
                       </div>
@@ -590,6 +804,32 @@ const BoardRoom = ({ state, setState }) => {
                         {projectBrief.progress.failed > 0 && (
                           <span className="failed-tasks">, {projectBrief.progress.failed} failed</span>
                         )}
+                      </div>
+                      <div className="lifecycle-gates">
+                        <div className="gate-status">
+                          <span className="gate-name">Manager Brief:</span>
+                          <span className={`gate-indicator ${currentWorkflow.metadata?.briefApprovedAt ? 'passed' : 'pending'}`}>
+                            {currentWorkflow.metadata?.briefApprovedAt ? '✅ Approved' : '⏳ Pending'}
+                          </span>
+                        </div>
+                        <div className="gate-status">
+                          <span className="gate-name">Specialist Tasks:</span>
+                          <span className={`gate-indicator ${projectBrief.progress.completed > (workflowTasks.filter(t => t.type === 'manager_brief').length) ? 'passed' : 'pending'}`}>
+                            {projectBrief.progress.completed > (workflowTasks.filter(t => t.type === 'manager_brief').length) ? '✅ In Progress' : '⏳ Waiting'}
+                          </span>
+                        </div>
+                        <div className="gate-status">
+                          <span className="gate-name">Manager Review:</span>
+                          <span className={`gate-indicator ${workflowTasks.find(t => t.type === 'manager_review')?.status === 'completed' ? 'passed' : 'pending'}`}>
+                            {workflowTasks.find(t => t.type === 'manager_review')?.status === 'completed' ? '✅ Complete' : '⏳ Pending'}
+                          </span>
+                        </div>
+                        <div className="gate-status">
+                          <span className="gate-name">CEO Approval:</span>
+                          <span className={`gate-indicator ${currentWorkflow.metadata?.ceoApproved ? 'passed' : 'pending'}`}>
+                            {currentWorkflow.metadata?.ceoApproved ? '✅ Approved' : '⏳ Pending'}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -613,7 +853,7 @@ const BoardRoom = ({ state, setState }) => {
                 </div>
                 {message.artifacts && message.artifacts.length > 0 && (
                   <div className="message-artifacts">
-                    {message.artifacts.map(renderArtifact)}
+                    {message.artifacts.map((artifact, idx) => renderArtifact(artifact, `${message.id}-${idx}`))}
                   </div>
                 )}
               </div>
@@ -658,12 +898,25 @@ const BoardRoom = ({ state, setState }) => {
           )}
 
           <div className="action-buttons">
-            <button onClick={handleApprove} className="approve-btn" disabled={!isConnected}>
-              ✅ Approve
-            </button>
-            <button onClick={handleRequestChanges} className="changes-btn" disabled={!isConnected}>
-              🔄 Request Changes
-            </button>
+            {currentWorkflow?.status === 'waiting_for_ceo_approval' ? (
+              <>
+                <button onClick={handleApprove} className="approve-btn ceo-approve" disabled={!isConnected}>
+                  👑 CEO Final Approval
+                </button>
+                <button onClick={handleRequestChanges} className="changes-btn" disabled={!isConnected}>
+                  🔄 Request Changes
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={handleApprove} className="approve-btn" disabled={!isConnected}>
+                  ✅ General Approve
+                </button>
+                <button onClick={handleRequestChanges} className="changes-btn" disabled={!isConnected}>
+                  🔄 Request Changes
+                </button>
+              </>
+            )}
             <button className="escalate-btn" disabled={!isConnected}>
               🚨 Escalate
             </button>

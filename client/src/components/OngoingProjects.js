@@ -27,16 +27,40 @@ const OngoingProjects = () => {
   const fetchProjects = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/projects');
+      // Fetch real workflow data from the autonomous API
+      const res = await fetch('/api/autonomous/workflows');
       const data = await res.json();
       let list = [];
 
-      if (Array.isArray(data)) list = data.map(normalizeProject);
-      else if (data?.workspaces) list = data.workspaces.flatMap(ws => (ws.projects || []).map(normalizeProject));
-      else if (data?.projects) list = data.projects.map(normalizeProject);
-      else if (data?.workflows) list = data.workflows.map(wf => normalizeProject({ id: wf.id, name: wf.directive || wf.id, description: wf.directive, status: wf.status, artifacts: wf.artifacts || [], agent: wf.agent || 'unknown' }));
-      else if (data?.id && data?.name) list = [normalizeProject(data)];
-      else if (data && typeof data === 'object') list = Object.values(data).flat().map(normalizeProject);
+      if (data?.workflows) {
+        // Deduplicate workflows by ID first
+        const uniqueWorkflows = data.workflows.reduce((acc, wf) => {
+          if (!acc.find(existing => existing.id === wf.id)) {
+            acc.push(wf);
+          }
+          return acc;
+        }, []);
+
+        list = uniqueWorkflows.map(wf => normalizeProject({
+          id: wf.id,
+          name: wf.directive || `Workflow ${wf.id}`,
+          description: wf.brief || wf.directive || '',
+          status: wf.status || 'unknown',
+          agent: wf.assignedManager || wf.managerId || 'unassigned',
+          artifacts: wf.artifacts || [],
+          files: wf.files || [],
+          metadata: {
+            ...wf.metadata,
+            workflow: true,
+            startedAt: wf.createdAt,
+            managerBrief: wf.brief,
+            clarificationNeeded: wf.clarificationRequired,
+            ceoApproval: wf.status === 'waiting_for_ceo_approval'
+          },
+          lastModified: wf.updatedAt || wf.createdAt || new Date().toISOString(),
+          type: 'workflow'
+        }));
+      }
 
       setProjects(list);
     } catch (e) {
@@ -52,9 +76,16 @@ const OngoingProjects = () => {
   const loadFileContent = async (project, file) => {
     if (!file || file.type === 'directory') return;
     try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(project.agent)}/${encodeURIComponent(project.name)}/files/${encodeURIComponent(file.path)}`);
-      const text = await res.text();
-      setFileContent(text); setSelectedFile(file); setIsEditing(false);
+      // Use workflow-aware file loading for workflow projects
+      if (project.type === 'workflow') {
+        const res = await fetch(`/api/autonomous/workflows/${project.id}/files/${encodeURIComponent(file.path)}`);
+        const text = await res.text();
+        setFileContent(text); setSelectedFile(file); setIsEditing(false);
+      } else {
+        const res = await fetch(`/api/projects/${encodeURIComponent(project.agent)}/${encodeURIComponent(project.name)}/files/${encodeURIComponent(file.path)}`);
+        const text = await res.text();
+        setFileContent(text); setSelectedFile(file); setIsEditing(false);
+      }
     } catch (e) {
       console.error('loadFileContent', e); setFileContent('Error loading file');
     }
@@ -63,14 +94,44 @@ const OngoingProjects = () => {
   const saveFileContent = async () => {
     if (!selectedProject || !selectedFile) return;
     try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(selectedProject.agent)}/${encodeURIComponent(selectedProject.name)}/files/${encodeURIComponent(selectedFile.path)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: fileContent });
-  if (res.ok) { setIsEditing(false); fetchProjects(); }
+      // Use workflow-aware file saving with lineage tracking
+      if (selectedProject.type === 'workflow') {
+        const payload = {
+          content: fileContent,
+          metadata: {
+            lineage: {
+              action: 'file_edit',
+              actor: 'user',
+              timestamp: new Date().toISOString(),
+              workflowId: selectedProject.id
+            }
+          }
+        };
+        const res = await fetch(`/api/autonomous/workflows/${selectedProject.id}/files/${encodeURIComponent(selectedFile.path)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) { setIsEditing(false); fetchProjects(); }
+      } else {
+        const res = await fetch(`/api/projects/${encodeURIComponent(selectedProject.agent)}/${encodeURIComponent(selectedProject.name)}/files/${encodeURIComponent(selectedFile.path)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'text/plain' },
+          body: fileContent
+        });
+        if (res.ok) { setIsEditing(false); fetchProjects(); }
+      }
     } catch (e) { console.error('saveFileContent', e); }
   };
 
   const downloadArtifact = async (project, file) => {
     try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(project.agent)}/${encodeURIComponent(project.name)}/files/${encodeURIComponent(file.path)}`);
+      let res;
+      if (project.type === 'workflow') {
+        res = await fetch(`/api/autonomous/workflows/${project.id}/files/${encodeURIComponent(file.path)}`);
+      } else {
+        res = await fetch(`/api/projects/${encodeURIComponent(project.agent)}/${encodeURIComponent(project.name)}/files/${encodeURIComponent(file.path)}`);
+      }
       const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = file.name || 'file.bin'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     } catch (e) { console.error('downloadArtifact', e); }
   };
@@ -86,11 +147,15 @@ const OngoingProjects = () => {
         <div className="projects-controls">
           <select value={filter} onChange={e => setFilter(e.target.value)}>
             <option value="all">All</option>
-            <option value="active">Active</option>
+            <option value="planned">Planned</option>
+            <option value="awaiting_clarification">Awaiting Clarification</option>
+            <option value="in_progress">In Progress</option>
+            <option value="executing">Executing</option>
+            <option value="waiting_for_ceo_approval">CEO Approval</option>
             <option value="completed">Completed</option>
-            <option value="in-development">In Development</option>
-            <option value="setup-required">Setup Required</option>
-            <option value="inactive">Inactive</option>
+            <option value="failed">Failed</option>
+            <option value="paused">Paused</option>
+            <option value="rejected">Rejected</option>
           </select>
           <button onClick={fetchProjects}>🔄 Refresh</button>
         </div>
@@ -101,24 +166,48 @@ const OngoingProjects = () => {
           <div className="projects-empty">No projects found</div>
         ) : (
           <div className="projects-grid">
-            {filtered.map(p => (
-              <div key={p.id} className="project-card" onClick={() => setSelectedProject(p)}>
-                <div className="project-name">{p.name}</div>
-                <div className="project-meta">Files: {p.files?.length || 0} • Artifacts: {p.artifacts?.length || 0}</div>
+            {filtered.map((p, idx) => (
+              <div key={`${p.id}-${idx}`} className="project-card" onClick={() => setSelectedProject(p)}>
+                <div className="project-header">
+                  <div className="project-name">{p.name}</div>
+                  <div className="project-status">{p.status}</div>
+                </div>
+                <div className="project-description">{p.description}</div>
+                <div className="project-meta">
+                  Manager: {p.agent} • Files: {p.files?.length || 0} • Artifacts: {p.artifacts?.length || 0}
+                  {p.metadata?.ceoApproval && <span className="ceo-flag"> • 👑 CEO Review</span>}
+                  {p.metadata?.clarificationNeeded && <span className="clarify-flag"> • ❓ Clarification</span>}
+                </div>
+                <div className="project-timestamp">
+                  Updated: {new Date(p.lastModified).toLocaleDateString()}
+                </div>
               </div>
             ))}
           </div>
         )
       ) : (
         <div className="project-workspace">
-          <button onClick={() => { setSelectedProject(null); setSelectedFile(null); setFileContent(''); setIsEditing(false); }}>← Back</button>
-          <h3>{selectedProject.name} — {selectedProject.agent}</h3>
+          <div className="workspace-header">
+            <button onClick={() => { setSelectedProject(null); setSelectedFile(null); setFileContent(''); setIsEditing(false); }}>← Back</button>
+            <div className="workspace-info">
+              <h3>{selectedProject.name} — {selectedProject.agent}</h3>
+              <div className="workspace-meta">
+                Status: <span className="status-badge">{selectedProject.status}</span>
+                {selectedProject.metadata?.workflow && (
+                  <span className="workflow-links">
+                    • <a href={`/agent-environment?agent=${selectedProject.agent}&project=${selectedProject.name}`}>Agent Environment</a>
+                    • <a href={`/console?workflow=${selectedProject.id}`}>Console Logs</a>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
           <div className="workspace-columns">
             <div className="file-browser">
               <h4>Files</h4>
               <ul>
-                {selectedProject.files?.map(f => (
-                  <li key={f.path || f.name} onClick={() => loadFileContent(selectedProject, f)}>{f.name || f.path}</li>
+                {selectedProject.files?.map((f, idx) => (
+                  <li key={`${f.path || f.name}-${idx}`} onClick={() => loadFileContent(selectedProject, f)}>{f.name || f.path}</li>
                 ))}
               </ul>
             </div>

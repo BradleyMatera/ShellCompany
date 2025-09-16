@@ -1,6 +1,36 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './AgentEnvironment.css';
 
+const getFileIcon = (filename) => {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const iconMap = {
+    'js': '🟨',
+    'jsx': '⚛️',
+    'ts': '🟦',
+    'tsx': '⚛️',
+    'html': '🌐',
+    'css': '🎨',
+    'scss': '🎨',
+    'json': '📋',
+    'md': '📝',
+    'txt': '📄',
+    'py': '🐍',
+    'java': '☕',
+    'cpp': '⚙️',
+    'c': '⚙️',
+    'png': '🖼️',
+    'jpg': '🖼️',
+    'jpeg': '🖼️',
+    'gif': '🖼️',
+    'svg': '🖼️',
+    'pdf': '📕',
+    'zip': '📦',
+    'tar': '📦',
+    'gz': '📦'
+  };
+  return iconMap[ext] || '📄';
+};
+
 const AgentEnvironment = ({ agent, onBack }) => {
   const [environmentData, setEnvironmentData] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -186,20 +216,77 @@ const AgentEnvironment = ({ agent, onBack }) => {
         `${selectedFile.parentDir}/${selectedFile.name}` :
         selectedFile.name;
 
+      // Enhanced save with lineage tracking
+      const savePayload = {
+        content: fileContent,
+        metadata: {
+          agentName: agent.name,
+          editedBy: 'user',
+          editedAt: new Date().toISOString(),
+          size: fileContent.length,
+          lineage: {
+            action: 'file_edit',
+            actor: 'user',
+            agentWorkspace: agentId,
+            timestamp: new Date().toISOString()
+          }
+        }
+      };
+
       const response = await fetch(`http://localhost:3001/api/agents/${agentId}/files/${encodeURIComponent(filePath)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'text/plain' },
-        body: fileContent
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(savePayload)
       });
 
       if (response.ok) {
+        const result = await response.json();
         setIsEditing(false);
-        console.log('File saved successfully');
+
+        // Update file metadata
+        const updatedFile = {
+          ...selectedFile,
+          size: fileContent.length,
+          modified: new Date().toISOString(),
+          sha: result.sha || 'updated'
+        };
+        setSelectedFile(updatedFile);
+
+        // Update file list
+        const updatedFiles = environmentData.files.map(f =>
+          f.name === selectedFile.name && f.parentDir === selectedFile.parentDir ? updatedFile : f
+        );
+        setEnvironmentData({ ...environmentData, files: updatedFiles });
+
+        // Add success message to chat
+        const successMessage = {
+          id: Date.now(),
+          type: 'agent',
+          message: `✅ File ${selectedFile.name} saved successfully! SHA: ${result.sha?.substring(0, 8) || 'updated'}`,
+          timestamp: new Date().toISOString()
+        };
+        setChatMessages(prev => [...prev, successMessage]);
+
+        console.log('File saved with lineage tracking:', result);
       } else {
         console.error('Failed to save file');
+        const errorMessage = {
+          id: Date.now(),
+          type: 'agent',
+          message: `❌ Failed to save ${selectedFile.name}. Please try again.`,
+          timestamp: new Date().toISOString()
+        };
+        setChatMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
       console.error('Failed to save file:', error);
+      const errorMessage = {
+        id: Date.now(),
+        type: 'agent',
+        message: `❌ Error saving ${selectedFile.name}: ${error.message}`,
+        timestamp: new Date().toISOString()
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
     } finally {
       setSaving(false);
     }
@@ -221,10 +308,28 @@ const AgentEnvironment = ({ agent, onBack }) => {
 
     try {
       const agentId = agent.id || agent.name.toLowerCase();
+
+      // Enhanced chat with context about current file and workspace
+      const chatPayload = {
+        message: currentInput,
+        context: {
+          agentName: agent.name,
+          currentFile: selectedFile ? {
+            name: selectedFile.name,
+            type: selectedFile.type,
+            size: selectedFile.size,
+            parentDir: selectedFile.parentDir
+          } : null,
+          workspaceFiles: environmentData?.files?.length || 0,
+          workspacePath: environmentData?.workspacePath,
+          timestamp: new Date().toISOString()
+        }
+      };
+
       const response = await fetch(`http://localhost:3001/api/agents/${agentId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: currentInput })
+        body: JSON.stringify(chatPayload)
       });
 
       if (response.ok) {
@@ -232,10 +337,32 @@ const AgentEnvironment = ({ agent, onBack }) => {
         const agentMessage = {
           id: Date.now() + 1,
           type: 'agent',
-          message: data.message,
-          timestamp: new Date().toISOString()
+          message: data.message || data.response,
+          timestamp: new Date().toISOString(),
+          model: data.model,
+          tokens: data.tokens,
+          latency: data.latency
         };
         setChatMessages(prev => [...prev, agentMessage]);
+
+        // If agent suggests file operations, handle them
+        if (data.actions) {
+          for (const action of data.actions) {
+            if (action.type === 'create_file') {
+              // Auto-create suggested files
+              console.log('Agent suggested creating file:', action.filename);
+            }
+          }
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = {
+          id: Date.now() + 1,
+          type: 'agent',
+          message: errorData.error || "Sorry, I'm having trouble responding right now. Please try again.",
+          timestamp: new Date().toISOString()
+        };
+        setChatMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
       console.error('Failed to send chat message:', error);
@@ -250,21 +377,88 @@ const AgentEnvironment = ({ agent, onBack }) => {
   };
 
   const createNewFile = async () => {
-    const fileName = prompt('Enter file name:');
+    const fileName = prompt('Enter file name (e.g., notes.md, config.json):');
     if (!fileName) return;
 
-    const newFile = {
-      name: fileName,
-      type: 'file',
-      size: 0,
-      modified: new Date().toISOString()
-    };
+    // Validate filename
+    if (fileName.includes('/') || fileName.includes('\\')) {
+      alert('File name cannot contain path separators');
+      return;
+    }
 
-    const updatedFiles = [...environmentData.files, newFile];
-    setEnvironmentData({ ...environmentData, files: updatedFiles });
-    setSelectedFile(newFile);
-    setFileContent(getDefaultFileContent(fileName));
-    setIsEditing(true);
+    // Check if file already exists
+    const existingFile = environmentData.files.find(f => f.name === fileName && !f.parentDir);
+    if (existingFile) {
+      const overwrite = window.confirm(`File ${fileName} already exists. Overwrite?`);
+      if (!overwrite) return;
+    }
+
+    try {
+      const agentId = agent.id || agent.name.toLowerCase();
+      const defaultContent = getDefaultFileContent(fileName);
+
+      // Create file with lineage tracking
+      const createPayload = {
+        content: defaultContent,
+        metadata: {
+          agentName: agent.name,
+          createdBy: 'user',
+          createdAt: new Date().toISOString(),
+          size: defaultContent.length,
+          lineage: {
+            action: 'file_create',
+            actor: 'user',
+            agentWorkspace: agentId,
+            timestamp: new Date().toISOString()
+          }
+        }
+      };
+
+      const response = await fetch(`http://localhost:3001/api/agents/${agentId}/files/${encodeURIComponent(fileName)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createPayload)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+
+        const newFile = {
+          name: fileName,
+          type: 'file',
+          size: defaultContent.length,
+          modified: new Date().toISOString(),
+          sha: result.sha || 'new'
+        };
+
+        // Update file list
+        const updatedFiles = existingFile ?
+          environmentData.files.map(f => f.name === fileName && !f.parentDir ? newFile : f) :
+          [...environmentData.files, newFile];
+
+        setEnvironmentData({ ...environmentData, files: updatedFiles });
+        setSelectedFile(newFile);
+        setFileContent(defaultContent);
+        setIsEditing(true);
+
+        // Add success message to chat
+        const successMessage = {
+          id: Date.now(),
+          type: 'agent',
+          message: `✅ Created ${fileName}. Ready for editing!`,
+          timestamp: new Date().toISOString()
+        };
+        setChatMessages(prev => [...prev, successMessage]);
+
+        console.log('File created with lineage tracking:', result);
+      } else {
+        console.error('Failed to create file');
+        alert('Failed to create file. Please try again.');
+      }
+    } catch (error) {
+      console.error('Failed to create file:', error);
+      alert(`Error creating file: ${error.message}`);
+    }
   };
 
   if (loading) {
@@ -297,8 +491,8 @@ const AgentEnvironment = ({ agent, onBack }) => {
         {agentDetails && (
           <div className="agent-details">
             <div className="specialties">
-              {(agentDetails.specialties || []).map(specialty => (
-                <span key={specialty} className="specialty-tag">{specialty}</span>
+              {(agentDetails.specialties || []).map((specialty, idx) => (
+                <span key={`${specialty}-${idx}`} className="specialty-tag">{specialty}</span>
               ))}
             </div>
             <div className="current-task">
@@ -325,7 +519,7 @@ const AgentEnvironment = ({ agent, onBack }) => {
                   <span className="file-icon">
                     {file.type === 'directory' ?
                       (expandedDirs.has(`${file.name}-${index}`) ? '📂' : '📁') :
-                      '📄'
+                      getFileIcon(file.name)
                     }
                   </span>
                   <span className="file-name">{file.name}</span>
@@ -336,9 +530,88 @@ const AgentEnvironment = ({ agent, onBack }) => {
               ))}
             </div>
           </div>
+        </div>
 
+        <div className="center-panel">
+          {selectedFile ? (
+            <div className="file-editor">
+              <div className="editor-header">
+                <div className="file-info">
+                  <h3>📝 {selectedFile.name}</h3>
+                  <div className="file-path">{selectedFile.parentDir ? `${selectedFile.parentDir}/` : ''}{selectedFile.name}</div>
+                </div>
+                <div className="editor-actions">
+                  {isEditing ? (
+                    <>
+                      <button onClick={saveFileContent} disabled={saving} className="save-btn">
+                        {saving ? '💾 Saving...' : '💾 Save'}
+                      </button>
+                      <button onClick={() => setIsEditing(false)} className="cancel-btn">❌ Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => setIsEditing(true)} className="edit-btn">✏️ Edit</button>
+                      <button onClick={() => window.open(`data:text/plain;charset=utf-8,${encodeURIComponent(fileContent)}`, '_blank')} className="preview-btn">🔍 Download</button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="editor-content">
+                {isEditing ? (
+                  <textarea
+                    value={fileContent}
+                    onChange={(e) => setFileContent(e.target.value)}
+                    className="code-editor"
+                    placeholder="Start typing your content here..."
+                  />
+                ) : (
+                  <pre className="code-viewer">{fileContent || 'File is empty. Click Edit to add content.'}</pre>
+                )}
+              </div>
+              <div className="editor-status">
+                <span className="status-info">
+                  {fileContent.length} characters • {fileContent.split('\n').length} lines
+                  {selectedFile.size && ` • ${Math.round(selectedFile.size / 1024) || 0}KB`}
+                </span>
+                <span className="last-modified">
+                  {selectedFile.modified ? `Modified: ${new Date(selectedFile.modified).toLocaleString()}` : 'New file'}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="no-file-selected">
+              <div className="welcome-message">
+                <h3>Welcome to {agent.name}'s Workspace</h3>
+                <p>Select a file from the left panel to view or edit it.</p>
+                <div className="workspace-stats">
+                  <div className="stat">
+                    <span className="stat-number">{environmentData?.files?.length || 0}</span>
+                    <span className="stat-label">Files</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-number">{agent.queue || 0}</span>
+                    <span className="stat-label">Queue</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-number">{chatMessages.length - 1}</span>
+                    <span className="stat-label">Messages</span>
+                  </div>
+                </div>
+                <div className="quick-actions">
+                  <button onClick={createNewFile} className="quick-action-btn">📄 New File</button>
+                  <button onClick={() => loadAgentEnvironment()} className="quick-action-btn">🔄 Refresh</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="right-panel">
           <div className="agent-chat">
             <h3>💬 Chat with {agent.name}</h3>
+            <div className="agent-specialty">
+              Specializing in: {(agent.specialties || agent.capabilities || []).join(', ') || agent.role}
+            </div>
             <div className="chat-messages">
               {chatMessages.map(msg => (
                 <div key={msg.id} className={`chat-message ${msg.type}`}>
@@ -357,68 +630,25 @@ const AgentEnvironment = ({ agent, onBack }) => {
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
-                placeholder={`Message ${agent.name}...`}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
+                placeholder={`Ask ${agent.name} about this file or workspace...`}
               />
-              <button onClick={sendChatMessage}>Send</button>
+              <button onClick={sendChatMessage} disabled={!chatInput.trim()}>Send</button>
+            </div>
+            <div className="quick-chat-actions">
+              <button onClick={() => setChatInput('Tell me about this workspace')} className="quick-chat-btn">
+                💼 About workspace
+              </button>
+              <button onClick={() => setChatInput('What files should I look at?')} className="quick-chat-btn">
+                📋 File suggestions
+              </button>
+              {selectedFile && (
+                <button onClick={() => setChatInput(`Explain the ${selectedFile.name} file`)} className="quick-chat-btn">
+                  📄 Explain file
+                </button>
+              )}
             </div>
           </div>
-        </div>
-
-        <div className="right-panel">
-          {selectedFile ? (
-            <div className="file-editor">
-              <div className="editor-header">
-                <h3>📝 {selectedFile.name}</h3>
-                <div className="editor-actions">
-                  {isEditing ? (
-                    <>
-                      <button onClick={saveFileContent} disabled={saving}>
-                        {saving ? 'Saving...' : 'Save'}
-                      </button>
-                      <button onClick={() => setIsEditing(false)}>Cancel</button>
-                    </>
-                  ) : (
-                    <button onClick={() => setIsEditing(true)}>Edit</button>
-                  )}
-                </div>
-              </div>
-              <div className="editor-content">
-                {isEditing ? (
-                  <textarea
-                    value={fileContent}
-                    onChange={(e) => setFileContent(e.target.value)}
-                    className="code-editor"
-                    rows={25}
-                  />
-                ) : (
-                  <pre className="code-viewer">{fileContent}</pre>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="no-file-selected">
-              <div className="welcome-message">
-                <h3>Welcome to {agent.name}'s Workspace</h3>
-                <p>Select a file from the left panel to view or edit it.</p>
-                <p>Use the chat below to communicate directly with {agent.name}.</p>
-                <div className="workspace-stats">
-                  <div className="stat">
-                    <span className="stat-number">{environmentData?.files?.length || 0}</span>
-                    <span className="stat-label">Files</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-number">{agent.queue || 0}</span>
-                    <span className="stat-label">Queue</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-number">{chatMessages.length - 1}</span>
-                    <span className="stat-label">Messages</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

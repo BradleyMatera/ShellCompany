@@ -24,7 +24,8 @@ class HealthMonitor {
   }
 
   startMetricsCollection() {
-    setInterval(() => {
+    // store interval id so it can be cleared during shutdown (useful for tests)
+    this.metricsInterval = setInterval(() => {
       this.updateMetrics();
     }, 30000); // Update every 30 seconds
   }
@@ -215,3 +216,15 @@ class HealthMonitor {
 }
 
 module.exports = new HealthMonitor();
+
+// Add a graceful shutdown function for testing purposes
+const _health = module.exports;
+if (typeof _health.shutdown !== 'function') {
+  _health.shutdown = async function() {
+    try {
+      if (this.metricsInterval) clearInterval(this.metricsInterval);
+    } catch (e) {
+      // ignore
+    }
+  };
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import './components/BoardRoom.css';
 import BoardRoom from './components/BoardRoom';
@@ -21,6 +21,10 @@ function App() {
     risks: [],
     milestones: []
   });
+
+  const handleBoardRoomStateChange = useCallback((newState) => {
+    setBoardRoomState(newState);
+  }, []);
 
   // Persistent console logs across tab switches
   const [consoleLogs, setConsoleLogs] = useState([]);
@@ -97,9 +101,9 @@ function App() {
           </button>
         </div>
         <div className="agent-status">
-          {agents.map(agent => (
-            <div 
-              key={agent.name} 
+          {agents.map((agent, idx) => (
+            <div
+              key={agent.id || agent.name || idx}
               className={`agent-indicator ${agent.status}`}
               onClick={() => handleAgentClick(agent)}
               style={{ cursor: 'pointer' }}
@@ -117,7 +121,7 @@ function App() {
         {activeTab === 'boardroom' && (
           <BoardRoom
             state={boardRoomState}
-            setState={setBoardRoomState}
+            setState={handleBoardRoomStateChange}
           />
         )}
         {activeTab === 'engine' && <EngineStatus />}

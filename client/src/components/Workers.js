@@ -219,9 +219,9 @@ const Workers = () => {
             </div>
           ) : (
             <div className="agents-grid">
-              {agents.map(agent => (
-                <div 
-                  key={agent.name} 
+              {agents.map((agent, idx) => (
+                <div
+                  key={agent.id || agent.name || idx}
                   className={`agent-card ${agent.status}`}
                   onClick={() => setSelectedAgent(agent)}
                 >
@@ -269,8 +269,8 @@ const Workers = () => {
                   <div className="agent-specializations">
                     <div className="detail-label">Specializations:</div>
                     <div className="specialization-tags">
-                      {(agent.specialties || agent.specializations || []).map(spec => (
-                        <span key={spec} className="spec-tag">{spec}</span>
+                      {(agent.specialties || agent.specializations || []).map((spec, idx) => (
+                        <span key={`${spec}-${idx}`} className="spec-tag">{spec}</span>
                       ))}
                     </div>
                   </div>

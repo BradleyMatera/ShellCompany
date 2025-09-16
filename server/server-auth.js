@@ -2013,7 +2013,6 @@ const initializeServer = async () => {
           }
         } catch (e) { console.warn('Could not seed Vercel token:', e.message); }
       }
-    }
 
     // Ensure agents are initialized in development
     try {

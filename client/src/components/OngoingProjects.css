@@ -1,11 +1,11 @@
 .ongoing-projects {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   background: #0a0a0a;
   color: #fff;
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .projects-header {
@@ -632,12 +632,103 @@
   color: #888;
 }
 
+.project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
 .project-name {
-  margin: 0 0 8px 0;
+  margin: 0;
   font-size: 16px;
   font-weight: 600;
   line-height: 1.4;
   color: #fff;
+  flex: 1;
+}
+
+.project-status {
+  background: rgba(255, 255, 255, 0.1);
+  color: #888;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: 12px;
+}
+
+.project-description {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #ccc;
+  line-height: 1.4;
+}
+
+.project-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #888;
+}
+
+.project-timestamp {
+  font-size: 11px;
+  color: #666;
+  margin-top: 8px;
+}
+
+.ceo-flag {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.clarify-flag {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid #333;
+  background: #1e1e1e;
+  gap: 16px;
+}
+
+.workspace-info {
+  flex: 1;
+}
+
+.workspace-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.workflow-links a {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.workflow-links a:hover {
+  color: #60a5fa;
+  text-decoration: underline;
+}
+
+.workspace-columns {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
 }
 
 .project-agent {

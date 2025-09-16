@@ -1,10 +1,11 @@
 .boardroom {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   background: #0a0a0a;
   color: #fff;
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: auto;
 }
 
 .boardroom-header {
@@ -82,7 +83,8 @@
 .boardroom-main {
   display: flex;
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
+  min-height: 0;
 }
 
 .conversation-area {
@@ -90,7 +92,8 @@
   display: flex;
   flex-direction: column;
   padding: 20px;
-  overflow: hidden;
+  overflow: auto;
+  min-height: 0;
 }
 
 .project-brief {
@@ -553,7 +556,115 @@
 }
 
 .execution-pipeline {
-  margin-top: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  margin-top: var(--space-lg);
+}
+
+/* ASK Lifecycle Pipeline */
+.ask-lifecycle-pipeline {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-md);
+  margin: var(--space-lg) 0;
+  padding: var(--space-md);
+  background: var(--bg-accent);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+}
+
+.pipeline-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.pipeline-stage.pending {
+  background: rgba(107, 114, 128, 0.1);
+  border: 2px solid var(--status-idle);
+}
+
+.pipeline-stage.active {
+  background: rgba(59, 130, 246, 0.1);
+  border: 2px solid var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+.pipeline-stage.completed {
+  background: rgba(34, 197, 94, 0.1);
+  border: 2px solid var(--color-success);
+}
+
+.stage-icon {
+  font-size: 2rem;
+  margin-bottom: var(--space-sm);
+}
+
+.stage-info {
+  text-align: center;
+}
+
+.stage-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.stage-agents {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: var(--font-medium);
+}
+
+.stage-status {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-secondary);
+}
+
+.pipeline-stage.pending .stage-status {
+  background: var(--status-idle);
+}
+
+.pipeline-stage.active .stage-status {
+  background: var(--color-primary);
+  animation: pulse 2s infinite;
+}
+
+.pipeline-stage.completed .stage-status {
+  background: var(--color-success);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Connect stages with lines */
+.pipeline-stage:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -calc(var(--space-md) / 2);
+  width: var(--space-md);
+  height: 2px;
+  background: var(--border-color);
+  z-index: -1;
+}
+
+.pipeline-stage.completed:not(:last-child)::after {
+  background: var(--color-success);
 }
 
 .pipeline-header {
@@ -884,4 +995,238 @@
 
 .failed-tasks {
   color: #ef4444;
+}
+
+/* Manager Section Styles */
+.manager-section {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.manager-header h5 {
+  margin: 0;
+  color: #22c55e;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.manager-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #2a2a2a;
+  border-radius: 6px;
+  padding: 12px;
+  border: 1px solid #404040;
+}
+
+.manager-avatar {
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #3a3a3a;
+  border-radius: 50%;
+}
+
+.manager-info {
+  flex: 1;
+}
+
+.manager-name {
+  font-weight: 600;
+  color: #fff;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.manager-role {
+  color: #999;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.manager-why {
+  color: #666;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.manager-brief-panel {
+  background: #2a2a2a;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.brief-status {
+  color: #22c55e;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.clarification-section h6 {
+  margin: 0 0 8px 0;
+  color: #fff;
+  font-size: 12px;
+}
+
+.clarifying-questions {
+  margin-bottom: 12px;
+}
+
+.clarifying-question {
+  background: #3a3a3a;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 6px;
+}
+
+.question-text {
+  display: block;
+  color: #ccc;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.question-answer {
+  display: block;
+  color: #22c55e;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.brief-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.approve-brief-btn {
+  padding: 6px 12px;
+  background: #22c55e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.approve-brief-btn:hover {
+  background: #16a34a;
+}
+
+.request-changes-btn {
+  padding: 6px 12px;
+  background: #f59e0b;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.request-changes-btn:hover {
+  background: #d97706;
+}
+
+/* Enhanced Pipeline Styles */
+.phase-brief {
+  border-left: 3px solid #3b82f6;
+}
+
+.phase-execute {
+  border-left: 3px solid #10b981;
+}
+
+.phase-review {
+  border-left: 3px solid #f59e0b;
+}
+
+.task-metadata {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #666;
+}
+
+.metadata-item {
+  background: #2a2a2a;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-right: 4px;
+}
+
+.phase-transition {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a1a;
+  color: #666;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.lifecycle-gates {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.gate-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #2a2a2a;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.gate-name {
+  color: #ccc;
+}
+
+.gate-indicator.passed {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.gate-indicator.pending {
+  color: #666;
+}
+
+.ceo-approve {
+  background: #8b5cf6 !important;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+  animation: pulse 2s infinite;
+}
+
+.ceo-approve:hover {
+  background: #7c3aed !important;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.6);
+  }
 }

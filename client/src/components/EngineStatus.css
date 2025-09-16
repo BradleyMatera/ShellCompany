@@ -5,6 +5,10 @@
   padding: 16px;
   color: #fff;
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .engine-header {

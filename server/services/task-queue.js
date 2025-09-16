@@ -19,8 +19,8 @@ class TaskQueue {
     // Start processing
     this.startProcessing();
 
-    // Periodic cleanup
-    setInterval(() => this.cleanup(), 60000); // Every minute
+  // Periodic cleanup - keep id so tests can clear it
+  this.cleanupInterval = setInterval(() => this.cleanup(), 60000); // Every minute
   }
 
   // Add task to queue
@@ -607,6 +607,13 @@ class TaskQueue {
   async shutdown() {
     console.log('Shutting down task queue...');
     this.isProcessing = false;
+
+    // clear periodic cleanup interval if present
+    try {
+      if (this.cleanupInterval) clearInterval(this.cleanupInterval);
+    } catch (e) {
+      // ignore
+    }
 
     // Cancel all scheduled tasks
     for (const [taskId, scheduled] of this.scheduledTasks.entries()) {
