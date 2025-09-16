@@ -11,19 +11,19 @@ graph TB
     end
     
     subgraph "Management Layer"
-        PM[Alex 🏢<br/>Project Manager]
+        PM["Alex 🏢<br/>Project Manager"]
     end
     
     subgraph "Specialist Agents"
-        FE[Nova 🎨<br/>Frontend Specialist]
-        BE[Zephyr ⚡<br/>Features Engineer]
-        FS[Sage 🚀<br/>Full Stack Engineer]
-        SEC[Cipher 🔒<br/>Security Specialist]
-        DES[Pixel 🎭<br/>UI/UX Designer]
+        FE["Nova 🎨<br/>Frontend Specialist"]
+        BE["Zephyr ⚡<br/>Features Engineer"]
+        FS["Sage 🚀<br/>Full Stack Engineer"]
+        SEC["Cipher 🔒<br/>Security Specialist"]
+        DES["Pixel 🎭<br/>UI/UX Designer"]
     end
     
-    subgraph "Extended Team (37 Total Agents)"
-        EXT["+31 Additional Specialists<br/>Aria, Astra, Atlas, Bolt, Byte, Cash,<br/>Cirrus, Delta, Echo, Forge, Guard,<br/>Hera, Juno, Lex, Lingo, Lumi, Lyra,<br/>Mint, Muse, Nexus, Orion, Pax,<br/>Quill, Rhea, Scroll, Sigma, Sketch,<br/>Trace, Vega, Vox, and more...]
+    subgraph "Extended Team"
+        EXT["+31 Additional Specialists<br/>Aria, Astra, Atlas, Bolt, Byte, Cash,<br/>Cirrus, Delta, Echo, Forge, Guard,<br/>Hera, Juno, Lex, Lingo, Lumi, Lyra,<br/>Mint, Muse, Nexus, Orion, Pax,<br/>Quill, Rhea, Scroll, Sigma, Sketch,<br/>Trace, Vega, Vox, and more..."]
     end
     
     CEO --> PM
@@ -34,10 +34,10 @@ graph TB
     PM --> DES
     PM --> EXT
     
-    FE <--> DES
-    BE <--> SEC
-    FS <--> FE
-    FS <--> BE
+    FE --- DES
+    BE --- SEC
+    FS --- FE
+    FS --- BE
 ```
 
 ## Core Agent Roster
