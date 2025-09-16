@@ -29,7 +29,7 @@ const { initializeDatabase } = require('./models');
 const { router: autonomousRouter, initializeWebSocket } = require('./routes/autonomous-api');
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // In-memory event buffer for Console view
 const EVENT_LIMIT = 500;
@@ -825,6 +825,11 @@ app.post('/api/agents/:agentName/chat', async (req, res) => {
   }
 });
 
+// The app will be exported for reuse in tests (supertest) and other programmatic uses.
+// The actual HTTP server, Socket.IO and orchestrator initialization are performed
+// only when this module is run directly (node index.js). This avoids starting
+// a listening socket during tests that import the app.
+
 // Agent preview endpoint
 app.post('/api/agents/:agentName/preview', async (req, res) => {
   const { agentName, file, type } = req.body;
@@ -1221,83 +1226,87 @@ app.get('/auth/dev-login', (req, res) => {
   res.json({ message: 'Dev login not required on simple server' });
 });
 
-// HTTP Server
-const server = app.listen(PORT, async () => {
-  console.log(`🚀 ShellCompany API running on http://localhost:${PORT}`);
+// Only start the HTTP server, Socket.IO and orchestrator when run directly.
+if (require.main === module) {
+  // HTTP Server
+  const server = app.listen(PORT, async () => {
+    console.log(`🚀 ShellCompany API running on http://localhost:${PORT}`);
 
-  // Initialize database and autonomous agents
-  try {
-    await initializeDatabase();
-    console.log('✅ Database and models initialized');
-  } catch (error) {
-    console.error('❌ Failed to initialize database:', error);
-  }
-});
-
-// Socket.IO Server (replaces plain WebSocket)
-const { Server } = require('socket.io');
-const io = new Server(server, {
-  cors: {
-    origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'],
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
-});
-
-// Socket.IO connection handling
-io.on('connection', (socket) => {
-  console.log('Socket.IO client connected:', socket.id);
-
-  socket.on('disconnect', () => {
-    console.log('Socket.IO client disconnected:', socket.id);
+    // Initialize database and autonomous agents
+    try {
+      await initializeDatabase();
+      console.log('✅ Database and models initialized');
+    } catch (error) {
+      console.error('❌ Failed to initialize database:', error);
+    }
   });
 
-  // Send initial connection confirmation
-  socket.emit('connection_confirmed', { 
-    message: 'Connected to ShellCompany autonomous agent platform',
-    timestamp: new Date().toISOString()
+  // Socket.IO Server (replaces plain WebSocket)
+  const { Server } = require('socket.io');
+  const io = new Server(server, {
+    cors: {
+      origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'],
+      methods: ['GET', 'POST'],
+      credentials: true
+    }
   });
-});
 
-// Initialize REAL autonomous agent execution platform
-const WorkflowOrchestrator = require('./services/workflow-orchestrator');
-const workspaceRoot = path.join(__dirname, 'agent-workspaces');
-const orchestrator = new WorkflowOrchestrator(workspaceRoot, io);
-app.locals.orchestrator = orchestrator;
-app.locals.socketio = io;
+  // Socket.IO connection handling
+  io.on('connection', (socket) => {
+    console.log('Socket.IO client connected:', socket.id);
 
-// Setup console logger broadcast function for real-time logging
-consoleLogger.setBroadcastFunction((data) => {
-  io.emit('console_log', data);
-});
+    socket.on('disconnect', () => {
+      console.log('Socket.IO client disconnected:', socket.id);
+    });
 
-// Test log to verify console logger is working
-console.log('[CONSOLE-LOGGER-TEST] Console logger initialized and broadcasting should work');
-console.log('[HTTP] Test - This should appear in the browser Console tab');
-console.error('[ERROR-TEST] Test error message for debugging');
+    // Send initial connection confirmation
+    socket.emit('connection_confirmed', { 
+      message: 'Connected to ShellCompany autonomous agent platform',
+      timestamp: new Date().toISOString()
+    });
+  });
 
-// Add periodic test logs to verify console capture
-setInterval(() => {
-  console.log(`[SERVER] Heartbeat - Active connections: ${io.engine.clientsCount}, Time: ${new Date().toISOString()}`);
-}, 30000);
+  // Initialize REAL autonomous agent execution platform
+  const WorkflowOrchestrator = require('./services/workflow-orchestrator');
+  const workspaceRoot = path.join(__dirname, 'agent-workspaces');
+  const orchestrator = new WorkflowOrchestrator(workspaceRoot, io);
+  app.locals.orchestrator = orchestrator;
+  app.locals.socketio = io;
 
-// Add agent activity logging
-setTimeout(() => {
-  const originalCreateWorkflow = app.locals.orchestrator?.createWorkflow;
-  if (originalCreateWorkflow) {
-    app.locals.orchestrator.createWorkflow = async function(directive) {
-      console.log(`[AGENT] Creating workflow for directive: "${directive}"`);
-      const result = await originalCreateWorkflow.call(this, directive);
-      console.log(`[AGENT] Workflow ${result.workflowId} created with ${result.workflow.tasks.length} tasks`);
-      return result;
-    };
-  }
-}, 1000); // Wait for orchestrator to be initialized
+  // Setup console logger broadcast function for real-time logging
+  consoleLogger.setBroadcastFunction((data) => {
+    io.emit('console_log', data);
+  });
 
-console.log('✅ Console logger connected to Socket.IO broadcasting');
+  // Test log to verify console logger is working
+  console.log('[CONSOLE-LOGGER-TEST] Console logger initialized and broadcasting should work');
+  console.log('[HTTP] Test - This should appear in the browser Console tab');
+  console.error('[ERROR-TEST] Test error message for debugging');
 
-// Kick off background provider pings to keep status fresh
-setTimeout(() => {
-  providerMonitor.pingAll().catch(() => {});
-  setInterval(() => providerMonitor.pingAll().catch(() => {}), 60_000);
-}, 2000);
+  // Add periodic test logs to verify console capture
+  setInterval(() => {
+    console.log(`[SERVER] Heartbeat - Active connections: ${io.engine.clientsCount}, Time: ${new Date().toISOString()}`);
+  }, 30000);
+
+  // Add agent activity logging
+  setTimeout(() => {
+    const originalCreateWorkflow = app.locals.orchestrator?.createWorkflow;
+    if (originalCreateWorkflow) {
+      app.locals.orchestrator.createWorkflow = async function(directive) {
+        console.log(`[AGENT] Creating workflow for directive: "${directive}"`);
+        const result = await originalCreateWorkflow.call(this, directive);
+        console.log(`[AGENT] Workflow ${result.workflowId} created with ${result.workflow.tasks.length} tasks`);
+        return result;
+      };
+    }
+  }, 1000); // Wait for orchestrator to be initialized
+
+  console.log('✅ Console logger connected to Socket.IO broadcasting');
+
+  // Kick off background provider pings to keep status fresh
+  setTimeout(() => {
+    // noop background probe for now
+  }, 1000);
+} else {
+  module.exports = app;
+}

@@ -272,8 +272,9 @@ class WorkflowOrchestrator {
       console.log(`[WORKFLOW:${workflowId}] Using brief context: ${briefContext.projectType} - ${briefContext.scope} - ${briefContext.timeline}`);
     }
 
-    // Enhanced task decomposition with brief context
-    const tasks = await this.decomposeDirective(userDirective, briefContext);
+  // Enhanced task decomposition with brief context
+  // If a completed brief object is passed in (from BriefManager), prefer its suggested manager
+  const tasks = await this.decomposeDirective(userDirective, briefContext);
     
     // Calculate realistic time estimates
     const estimates = this.calculateTimeEstimates(tasks);
@@ -282,19 +283,21 @@ class WorkflowOrchestrator {
       id: workflowId,
       directive: userDirective,
       status: 'planned',
-      tasks,
+      // tasks will be set below depending on manager brief gating
+      tasks: [],
       estimates,
       startTime,
       progress: {
         completed: 0,
-        total: tasks.length,
+        total: 0,
         percentage: 0
       },
-      artifacts: []
+      artifacts: [],
+      metadata: {}
     };
 
-    // Save to both memory and database
-    this.workflows.set(workflowId, workflow);
+  // Save to both memory and database
+  this.workflows.set(workflowId, workflow);
     
     try {
       // Persist to database
@@ -353,7 +356,26 @@ class WorkflowOrchestrator {
     }
 
     // Add tasks to execution queue
-    this.queueTasks(tasks, workflowId);
+    // If there is a manager brief gating the workflow, pause scheduling of specialist tasks until approval
+    // Manager brief tasks will have type 'manager_brief' and a special metadata.briefId
+    const managerBriefTasks = tasks.filter(t => t.type === 'manager_brief');
+    if (managerBriefTasks && managerBriefTasks.length > 0) {
+      // When manager brief gating exists, only persist and queue the manager brief tasks now
+      workflow.tasks = managerBriefTasks.slice();
+      workflow.progress.total = workflow.tasks.length;
+      workflow.metadata.requiresManagerApproval = true;
+
+      this.queueTasks(managerBriefTasks, workflowId);
+
+      // Store remaining tasks to be scheduled after approval (do not persist them yet to avoid duplication)
+      const pending = tasks.filter(t => t.type !== 'manager_brief');
+      workflow._pendingAfterApproval = pending;
+      console.log(`[WORKFLOW:${workflowId}] Paused ${pending.length} tasks until manager brief approval`);
+    } else {
+      workflow.tasks = tasks;
+      workflow.progress.total = workflow.tasks.length;
+      this.queueTasks(tasks, workflowId);
+    }
 
     return { workflowId, workflow };
   }
@@ -387,38 +409,71 @@ class WorkflowOrchestrator {
     // requested agent is the creator of the artifact (no silent substitution).
     try {
       const lower = directive.toLowerCase();
-  const mentionsCreate = lower.includes('create') || lower.includes('put it in') || lower.includes('make');
-  // Consider variations: ".md", "markdown", "md document", or standalone " md "
-  const mentionsMd = lower.includes('.md') || lower.includes('markdown') || lower.includes('md document') || (/\bmd\b/.test(lower)) || (briefContext && briefContext.filename && briefContext.filename.toLowerCase().endsWith('.md'));
+      const mentionsCreate = lower.includes('create') || lower.includes('put it in') || lower.includes('make');
+      // Consider variations: ".md", "markdown", "md document", or standalone " md "
+      const mentionsMd = lower.includes('.md') || lower.includes('markdown') || lower.includes('md document') || (/\bmd\b/.test(lower)) || (briefContext && briefContext.filename && briefContext.filename.toLowerCase().endsWith('.md'));
 
-      if (briefContext && briefContext.agentExplicit && briefContext.requestedAgent && mentionsCreate && mentionsMd) {
-        const requested = briefContext.requestedAgent;
+      // Detect explicit agent mention in directive text (e.g., "have Sage create ...")
+      let explicitAgentFromDirective = null;
+      try {
+        for (const agentName of this.agents.keys()) {
+          if (!agentName) continue;
+          if (lower.includes(agentName.toLowerCase())) {
+            explicitAgentFromDirective = agentName;
+            break;
+          }
+        }
+      } catch (e) {
+        // ignore detection errors
+      }
 
-        // Lightweight planning (optional) - assigned to Alex to coordinate unless Sage requested planning
-        const planningAssignee = requested === 'Sage' ? 'Alex' : 'Alex';
-        const planningTask = {
+      const explicitRequestedAgent = (briefContext && briefContext.agentExplicit && briefContext.requestedAgent) ? briefContext.requestedAgent : explicitAgentFromDirective;
+
+      if (explicitRequestedAgent && mentionsCreate && mentionsMd) {
+        const requested = explicitRequestedAgent;
+
+        // Determine manager (prefer requested if makes sense)
+        const manager = this.selectManagerForDirective(directive, briefContext) || requested || 'Alex';
+
+        // Choose specialist for file creation (markdown -> Nova by default)
+        const filename = (briefContext && briefContext.filename) ? briefContext.filename : (lower.includes('about-me') || lower.includes('about me') ? 'ABOUT_ME.md' : 'ABOUT_ME.md');
+        const specialistForMd = 'Nova';
+        const createAssignee = (manager === requested && requested === 'Sage') ? specialistForMd : requested;
+
+        // Manager brief task that must be approved before specialists proceed
+        const managerBriefFilename = `MANAGER_BRIEF.md`;
+        const managerBriefContent = `# Manager Brief\n\nDirective: ${directive}\n\nUnderstanding:\n- ...\n\nAssumptions:\n- ...\n\nRisks:\n- ...\n\nInitial Plan:\n1. ...\n2. ...\n\nNotes: This brief was authored by ${manager}.`;
+
+        const managerBriefTask = {
           id: uuidv4(),
-          title: 'Lightweight planning',
-          description: `Quick plan for file creation requested by ${requested}`,
-          assignedAgent: planningAssignee,
-          commands: [ `echo "Planning for ${directive}" > planning.txt` ],
+          title: 'Manager Brief: Summary, Assumptions, Risks, Plan',
+          description: `Manager (${manager}) will author a short brief for: ${directive}`,
+          assignedAgent: manager,
+          // Use a distinct task type so the orchestrator can detect manager briefs
+          type: 'manager_brief',
+          // Keep create-file style fields so the executor can create the file when run
+          fileName: managerBriefFilename,
+          content: managerBriefContent,
+          briefMeta: {
+            directive,
+            filename: filename
+          },
           dependencies: [],
           status: 'pending',
-          estimatedDuration: 5000
+          estimatedDuration: 8000
         };
 
-        // File creation task - assigned to the explicitly requested agent
-        const filename = (briefContext && briefContext.filename) ? briefContext.filename : (lower.includes('about-me') || lower.includes('about me') ? 'about-me.md' : 'about-me.md');
+        // File creation task - assigned to specialist (e.g., Nova) and depends on manager brief approval
         const createTask = {
           id: uuidv4(),
           title: `Create ${filename}`,
-          description: `Create ${filename} as requested in the directive`,
-          assignedAgent: requested,
+          description: `Create ${filename} as requested in the directive (specialist: ${createAssignee})`,
+          assignedAgent: createAssignee,
           type: 'create_file',
           fileName: filename,
           // Initial content includes provenance; final content may be edited later in Workers
-          content: `# About Me\n\nThis document was created by ${requested} in response to directive:\n\n> ${directive}\n\n(Please review and edit as needed.)\n`,
-          dependencies: [planningTask.id],
+          content: `# About Me\n\nThis document was created by ${createAssignee} in response to directive:\n\n> ${directive}\n\n(Please review and edit as needed.)\n`,
+          dependencies: [managerBriefTask.id],
           status: 'pending',
           estimatedDuration: 8000
         };
@@ -436,7 +491,7 @@ class WorkflowOrchestrator {
           optional: true
         };
 
-        tasks.push(planningTask, createTask, qaTask);
+        tasks.push(managerBriefTask, createTask, qaTask);
         return tasks;
       }
     } catch (err) {
@@ -988,8 +1043,26 @@ class WorkflowOrchestrator {
     try {
       let results;
 
-      // If this is a structured create_file task, invoke the executor's createFile directly
-      if (task.type === 'create_file') {
+      // If this is a manager review task, perform a lightweight review step instead of shell commands
+      if (task.type === 'manager_review') {
+        this.streamToConsole = this.streamToConsole || console.log;
+        agent.executor.streamToConsole && agent.executor.streamToConsole(`[${agent.config.name}] Starting manager review for workflow ${workflow.id}`);
+        const artifactsCount = (workflow.artifacts && workflow.artifacts.length) || 0;
+        this.streamToConsole && this.streamToConsole(`[${agent.config.name}] Manager reviewing ${artifactsCount} artifacts`);
+
+        results = {
+          taskId: task.id,
+          agentName: agent.config.name,
+          startTime: Date.now(),
+          endTime: Date.now(),
+          steps: [],
+          artifacts: [],
+          status: 'completed'
+        };
+      }
+
+      // If this is a structured create_file task or a manager_brief, invoke the executor's createFile directly
+      else if (task.type === 'create_file' || task.type === 'manager_brief') {
         this.streamToConsole = this.streamToConsole || console.log;
         agent.executor.streamToConsole(`[${agent.config.name}] Creating file ${task.fileName} as part of workflow ${task.workflowId}`);
 
@@ -1065,12 +1138,23 @@ class WorkflowOrchestrator {
 
     // Check if workflow is complete
     if (completed + failed === total) {
-      workflow.status = failed > 0 ? 'failed' : 'completed';
-      workflow.endTime = Date.now();
-      workflow.totalDuration = workflow.endTime - workflow.startTime;
+      // If workflow requires manager approval/CEO sign-off, ensure both have occurred before marking completed
+      const requiresManagerApproval = !!workflow.metadata && !!workflow.metadata.requiresManagerApproval;
+      const managerReviewDone = workflow.tasks.some(t => t.type === 'manager_review' && t.status === 'completed');
+      const ceoApproved = !!(workflow.metadata && workflow.metadata.ceoApproved);
 
-      this.completedWorkflows.push(workflow);
-      console.log(`[WORKFLOW:${workflowId}] Workflow ${workflow.status} in ${Math.round(workflow.totalDuration / 1000)}s`);
+      if (requiresManagerApproval && !(managerReviewDone && ceoApproved)) {
+        // Mark as waiting for final approval rather than completed
+        workflow.status = 'waiting_for_ceo_approval';
+        console.log(`[WORKFLOW:${workflowId}] Waiting for manager review and CEO approval before finalizing`);
+      } else {
+        workflow.status = failed > 0 ? 'failed' : 'completed';
+        workflow.endTime = Date.now();
+        workflow.totalDuration = workflow.endTime - workflow.startTime;
+
+        this.completedWorkflows.push(workflow);
+        console.log(`[WORKFLOW:${workflowId}] Workflow ${workflow.status} in ${Math.round(workflow.totalDuration / 1000)}s`);
+      }
     }
 
     // Update database
@@ -1123,6 +1207,110 @@ class WorkflowOrchestrator {
     };
 
     return averages[agentName] || 60000;
+  }
+
+  // Choose manager based on briefContext, suggestedAgents, and simple capability matching
+  selectManagerForDirective(directive, briefContext = {}) {
+    // Prefer explicit requested agent from briefContext
+    if (briefContext && briefContext.requestedAgent && briefContext.requestedAgent !== '') {
+      return briefContext.requestedAgent;
+    }
+
+    // Heuristic: DevOps/backend -> Sage, backend-heavy -> Zephyr, design -> Pixel, docs/content -> Nova/Ivy, otherwise Alex
+    const lower = (directive || '').toLowerCase();
+    if (lower.includes('ci') || lower.includes('deploy') || lower.includes('infrastructure') || lower.includes('ci/cd')) return 'Sage';
+    if (lower.includes('api') || lower.includes('backend') || lower.includes('server')) return 'Zephyr';
+    if (lower.includes('design') || lower.includes('branding') || lower.includes('visual')) return 'Pixel';
+    if (lower.includes('about me') || lower.includes('.md') || lower.includes('markdown') || lower.includes('document')) return 'Sage';
+    if (lower.includes('ideas') || lower.includes('brainstorm') || lower.includes('movie') || lower.includes('pitch')) return 'Alex';
+
+    // fallback: choose the first suggested agent if present
+    if (briefContext && Array.isArray(briefContext.suggestedAgents) && briefContext.suggestedAgents.length > 0) return briefContext.suggestedAgents[0];
+
+    return 'Alex';
+  }
+
+  // When a manager brief has been approved, schedule pending tasks stored on workflow
+  async schedulePendingAfterApproval(workflowId) {
+    const workflow = this.workflows.get(workflowId);
+    if (!workflow || !workflow._pendingAfterApproval || workflow._pendingAfterApproval.length === 0) return 0;
+
+    const pending = workflow._pendingAfterApproval;
+    // Attach a manager_review task at the end that managers must complete for final sign-off
+    const managerReviewTask = {
+      id: uuidv4(),
+      title: 'Manager Review & Sign-off',
+      description: 'Manager reviews delivered artifacts vs. brief and signs off to complete the workflow',
+      assignedAgent: workflow.manager || 'Alex',
+      type: 'manager_review',
+      dependencies: pending.map(t => t.id),
+      status: 'pending',
+      estimatedDuration: 8000
+    };
+
+  // Append manager review to pending tasks if not already present
+  const hasReview = pending.some(t => t.type === 'manager_review');
+  if (!hasReview) pending.push(managerReviewTask);
+
+    // Add to workflow tasks and queue them
+    workflow.tasks = workflow.tasks.concat(pending);
+    workflow.progress.total = workflow.tasks.length;
+    delete workflow._pendingAfterApproval;
+
+    // Persist updated tasks to DB immediately
+    try {
+      await Workflow.update({ tasks: workflow.tasks, progress: workflow.progress }, { where: { id: workflowId } }).catch(() => null);
+    } catch (e) {
+      console.warn('[WORKFLOW] schedulePendingAfterApproval DB update failed:', e && e.message);
+    }
+
+    this.queueTasks(pending, workflowId);
+    console.log(`[WORKFLOW:${workflowId}] Scheduled ${pending.length} pending tasks after manager approval`);
+    return pending.length;
+  }
+
+  // Record CEO approval/rejection for a workflow - affects final completion
+  async recordCeoApproval(workflowId, approver = 'ceo', approved = true) {
+    const workflow = this.workflows.get(workflowId);
+    if (!workflow) throw new Error('Workflow not found');
+
+    workflow.metadata = workflow.metadata || {};
+    workflow.metadata.ceoApproved = !!approved;
+    workflow.metadata.ceoApprover = approver;
+    workflow.metadata.ceoApprovedAt = new Date();
+
+    try {
+      await Workflow.update({ metadata: workflow.metadata }, { where: { id: workflowId } }).catch(() => null);
+    } catch (e) {
+      console.warn('[WORKFLOW] recordCeoApproval DB update failed:', e && e.message);
+    }
+
+    // Re-evaluate workflow completion state
+    await this.updateWorkflowProgress(workflowId);
+
+    return { workflowId, ceoApproved: workflow.metadata.ceoApproved };
+  }
+
+  // External call to notify orchestrator that a brief has been approved and attach manager metadata
+  async attachBriefApproval(workflowId, briefCompleted) {
+    const workflow = this.workflows.get(workflowId);
+    if (!workflow) throw new Error('Workflow not found');
+
+    // Set manager based on briefCompleted.requestedAgent or select heuristically
+    const manager = briefCompleted.requestedAgent || this.selectManagerForDirective(workflow.directive, briefCompleted);
+    workflow.manager = manager;
+    workflow.brief = briefCompleted;
+
+    // Persist manager metadata
+    try {
+      await Workflow.update({ metadata: Object.assign({}, workflow.metadata || {}, { manager }) }, { where: { id: workflowId } }).catch(() => null);
+    } catch (e) {
+      console.warn('[WORKFLOW] attachBriefApproval failed to persist manager metadata:', e && e.message);
+    }
+
+    // Schedule pending tasks that were paused
+    const scheduled = await this.schedulePendingAfterApproval(workflowId);
+    return { scheduled, manager };
   }
 
   getAgentStatus() {
@@ -1406,13 +1594,17 @@ class WorkflowOrchestrator {
         });
         
         // Emit update to connected clients
-        this.socketio.emit('artifact-updated', {
-          artifactId: artifact.id,
-          agentName,
-          fileName,
-          timestamp: new Date().toISOString(),
-          action: 'edited'
-        });
+        if (this.socketio && typeof this.socketio.emit === 'function') {
+          this.socketio.emit('artifact-updated', {
+            artifactId: artifact.id,
+            agentName,
+            fileName,
+            timestamp: new Date().toISOString(),
+            action: 'edited'
+          });
+        } else {
+          console.log('[LINEAGE] socketio not available, skipping artifact-updated emit');
+        }
 
         console.log(`[LINEAGE] Updated artifact ${fileName} by user via ${agentName} environment`);
         return artifact.id;

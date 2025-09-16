@@ -449,6 +449,63 @@ router.get('/tasks', async (req, res) => {
   }
 });
 
+// Create a workflow (existing boardroom/autonomous entrypoint)
+router.post('/workflow', ensureAuth, async (req, res) => {
+  try {
+  const directive = req.body && req.body.directive;
+  const briefContext = req.body && (req.body.completedBrief || req.body.brief || req.body.briefContext) || null;
+    if (!directive) return res.status(400).json({ error: 'directive required' });
+
+    // Use orchestrator injected on app.locals
+    const orchestrator = req.app.locals.orchestrator;
+    if (!orchestrator) return res.status(500).json({ error: 'orchestrator not available' });
+
+  const result = await orchestrator.createWorkflow(directive, briefContext);
+    return res.json({ success: true, workflowId: result.workflowId, tasks: result.workflow.tasks });
+  } catch (e) {
+    console.error('Failed to create workflow via API:', e && e.message);
+    res.status(500).json({ error: 'failed_to_create_workflow', detail: e && e.message });
+  }
+});
+
+// Approve a manager brief for a workflow (manager action)
+router.post('/workflows/:workflowId/brief/approve', ensureAuth, async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const { approved = true, approver, completedBrief } = req.body || {};
+
+    const orchestrator = req.app.locals.orchestrator;
+    if (!orchestrator) return res.status(500).json({ error: 'orchestrator not available' });
+
+    if (!approved) {
+      return res.json({ success: false, message: 'brief_not_approved' });
+    }
+
+    // Attach manager approval and schedule paused tasks
+    const result = await orchestrator.attachBriefApproval(workflowId, completedBrief);
+    return res.json({ success: true, scheduled: result.scheduled, manager: result.manager });
+  } catch (e) {
+    console.error('Failed to attach brief approval:', e && e.message);
+    res.status(500).json({ error: 'failed_to_attach_brief', detail: e && e.message });
+  }
+});
+
+// CEO approval endpoint to unlock final gating and complete workflow
+router.post('/workflows/:workflowId/approve', ensureAuth, async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const { approved = true, approver } = req.body || {};
+    const orchestrator = req.app.locals.orchestrator;
+    if (!orchestrator) return res.status(500).json({ error: 'orchestrator not available' });
+
+    const result = await orchestrator.recordCeoApproval(workflowId, approver || 'ceo', approved);
+    return res.json({ success: true, ceoApproved: result.ceoApproved });
+  } catch (e) {
+    console.error('Failed to record CEO approval:', e && e.message);
+    res.status(500).json({ error: 'failed_to_record_ceo', detail: e && e.message });
+  }
+});
+
 // Get task details
 router.get('/tasks/:taskId', async (req, res) => {
   try {
