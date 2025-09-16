@@ -72,20 +72,20 @@ const config: Config = {
           position: 'left',
           items: [
             {
-              label: 'Architecture',
-              to: '/architecture',
+              label: 'Architecture Overview',
+              to: '/architecture/overview',
             },
             {
-              label: 'Agents',
-              to: '/agents',
+              label: 'Agents Overview',
+              to: '/agents/overview',
             },
             {
-              label: 'Workflows',
-              to: '/workflows',
+              label: 'Workflow Lifecycle',
+              to: '/workflows/lifecycle',
             },
             {
-              label: 'API Reference',
-              to: '/api',
+              label: 'Tech Stack',
+              to: '/architecture/tech-stack',
             },
           ],
         },
@@ -100,53 +100,41 @@ const config: Config = {
       style: 'dark',
       links: [
         {
-          title: 'Platform',
+          title: 'Architecture',
           items: [
             {
-              label: 'Architecture',
-              to: '/architecture',
+              label: 'Overview',
+              to: '/architecture/overview',
             },
             {
-              label: 'Engines',
-              to: '/engines',
-            },
-            {
-              label: 'Workflows',
-              to: '/workflows',
+              label: 'Tech Stack',
+              to: '/architecture/tech-stack',
             },
           ],
         },
         {
-          title: 'Development',
+          title: 'Agents & Workflows',
           items: [
             {
-              label: 'UI Components',
-              to: '/ui',
+              label: 'Agent Overview',
+              to: '/agents/overview',
             },
             {
-              label: 'Data Models',
-              to: '/data',
-            },
-            {
-              label: 'API Reference',
-              to: '/api',
+              label: 'Workflow Lifecycle',
+              to: '/workflows/lifecycle',
             },
           ],
         },
         {
-          title: 'Agents',
+          title: 'Documentation',
           items: [
             {
-              label: 'Agent Roster',
-              to: '/agents',
+              label: 'Getting Started',
+              to: '/',
             },
             {
-              label: 'Company Structure',
-              to: '/company',
-            },
-            {
-              label: 'Metrics',
-              to: '/metrics',
+              label: 'Introduction',
+              to: '/intro',
             },
           ],
         },
