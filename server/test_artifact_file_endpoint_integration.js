@@ -18,7 +18,8 @@ const router = apiModule.router || apiModule;
     },
     _map: {}
   };
-
+  // Inject an authenticated test user for ensureAuth middleware
+  app.locals.testAuthUser = { id: 1, role: 'owner', email: 'test@local' };
   app.locals.orchestrator = orchestratorStub;
   app.use('/api/autonomous', router);
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
 import './Console.css';
 
@@ -7,6 +7,45 @@ const Console = ({ logs, setLogs, isConnected, setIsConnected }) => {
   const [filter, setFilter] = useState('all');
   const logsEndRef = useRef(null);
   const consoleRef = useRef(null);
+
+  const fetchLogHistory = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/console/logs');
+      const data = await response.json();
+      console.log('Console logs API response:', data); // Debug log
+      
+      // Handle different response formats
+      let logData = [];
+      if (data.logs && Array.isArray(data.logs)) {
+        logData = data.logs;
+      } else if (Array.isArray(data)) {
+        logData = data;
+      }
+      
+      // Ensure logs have required properties
+      const validLogs = logData.filter(log => log && log.timestamp && log.message);
+      setLogs(validLogs);
+    } catch (error) {
+      console.error('Failed to fetch log history:', error);
+      // Add some test logs to verify the UI works
+      setLogs([
+        {
+          id: 'test1',
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Console component loaded successfully',
+          source: 'client'
+        },
+        {
+          id: 'test2', 
+          timestamp: new Date().toISOString(),
+          level: 'log',
+          message: 'Waiting for server logs...',
+          source: 'system'
+        }
+      ]);
+    }
+  }, [setLogs]);
 
   useEffect(() => {
     // Connect to WebSocket for real-time logs
@@ -45,11 +84,12 @@ const Console = ({ logs, setLogs, isConnected, setIsConnected }) => {
     });
 
     // Fetch initial log history
+    fetchLogHistory().catch(() => {});
 
     return () => {
       newSocket.close();
     };
-  }, []);
+  }, [fetchLogHistory, setIsConnected, setLogs]);
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
@@ -58,44 +98,7 @@ const Console = ({ logs, setLogs, isConnected, setIsConnected }) => {
     }
   }, [logs, autoScroll]);
 
-  const fetchLogHistory = async () => {
-    try {
-      const response = await fetch('http://localhost:3001/api/console/logs');
-      const data = await response.json();
-      console.log('Console logs API response:', data); // Debug log
-      
-      // Handle different response formats
-      let logData = [];
-      if (data.logs && Array.isArray(data.logs)) {
-        logData = data.logs;
-      } else if (Array.isArray(data)) {
-        logData = data;
-      }
-      
-      // Ensure logs have required properties
-      const validLogs = logData.filter(log => log && log.timestamp && log.message);
-      setLogs(validLogs);
-    } catch (error) {
-      console.error('Failed to fetch log history:', error);
-      // Add some test logs to verify the UI works
-      setLogs([
-        {
-          id: 'test1',
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Console component loaded successfully',
-          source: 'client'
-        },
-        {
-          id: 'test2', 
-          timestamp: new Date().toISOString(),
-          level: 'log',
-          message: 'Waiting for server logs...',
-          source: 'system'
-        }
-      ]);
-    }
-  };
+  // fetchLogHistory is defined above as a stable useCallback
 
   const handleScroll = () => {
     if (!consoleRef.current) return;

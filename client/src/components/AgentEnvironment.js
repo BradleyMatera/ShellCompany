@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './AgentEnvironment.css';
 
 const AgentEnvironment = ({ agent, onBack }) => {
@@ -13,15 +13,7 @@ const AgentEnvironment = ({ agent, onBack }) => {
   const [saving, setSaving] = useState(false);
   const [agentDetails, setAgentDetails] = useState(null);
 
-  useEffect(() => {
-    if (agent) {
-      loadAgentEnvironment();
-      loadAgentDetails();
-      initializeChat();
-    }
-  }, [agent]);
-
-  const loadAgentDetails = async () => {
+  const loadAgentDetails = useCallback(async () => {
     try {
       const response = await fetch(`http://localhost:3001/api/agents/${agent.id || agent.name.toLowerCase()}`);
       if (response.ok) {
@@ -31,9 +23,9 @@ const AgentEnvironment = ({ agent, onBack }) => {
     } catch (error) {
       console.error('Failed to load agent details:', error);
     }
-  };
+  }, [agent]);
 
-  const loadAgentEnvironment = async () => {
+  const loadAgentEnvironment = useCallback(async () => {
     try {
       setLoading(true);
       const agentId = agent.id || agent.name.toLowerCase();
@@ -53,7 +45,27 @@ const AgentEnvironment = ({ agent, onBack }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [agent]);
+
+  const initializeChat = useCallback(() => {
+    setChatMessages([
+      {
+        id: 1,
+        type: 'agent',
+        message: `Hi! I'm ${agent.name}, your ${agent.role}. I'm here to help with ${(agent.specialties || agent.capabilities || []).join(', ')}. How can I assist you today?`,
+        timestamp: new Date().toISOString()
+      }
+    ]);
+  }, [agent]);
+
+  useEffect(() => {
+    if (agent) {
+      loadAgentEnvironment();
+      loadAgentDetails();
+      initializeChat();
+    }
+  }, [agent, loadAgentEnvironment, loadAgentDetails, initializeChat]);
+
 
   const createAgentWorkspace = async (agentId) => {
     try {
@@ -75,16 +87,7 @@ const AgentEnvironment = ({ agent, onBack }) => {
     }
   };
 
-  const initializeChat = () => {
-    setChatMessages([
-      {
-        id: 1,
-        type: 'agent',
-        message: `Hi! I'm ${agent.name}, your ${agent.role}. I'm here to help with ${(agent.specialties || agent.capabilities || []).join(', ')}. How can I assist you today?`,
-        timestamp: new Date().toISOString()
-      }
-    ]);
-  };
+  // initializeChat, loadAgentDetails, loadAgentEnvironment are defined via useCallback above
 
   const handleFileClick = async (file, index) => {
     if (file.type === 'directory') {
@@ -114,7 +117,7 @@ const AgentEnvironment = ({ agent, onBack }) => {
 
   const loadDirectoryContents = async (dirName, parentIndex) => {
     try {
-      const agentId = agent.id || agent.name.toLowerCase();
+      // agentId not required here for the mocked contents
 
       // For now, simulate directory contents
       const mockSubFiles = [

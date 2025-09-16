@@ -12,6 +12,49 @@ const bus = (() => { try { return require('../services/bus'); } catch { return {
 
 const router = express.Router();
 
+// Readiness endpoint: returns 200 if DB is reachable and migrations are applied.
+router.get('/ready', async (req, res) => {
+  try {
+    const { migrationsApplied } = require('../migration-runner');
+    const applied = await migrationsApplied();
+    if (!applied) {
+      return res.status(503).json({ ok: false, message: 'Migrations pending' });
+    }
+
+    // Also do a lightweight DB ping
+    const { sequelize } = require('../models');
+    await sequelize.authenticate();
+
+    res.json({ ok: true, message: 'ready' });
+  } catch (err) {
+    console.error('Readiness check failed:', err && err.message || err);
+    res.status(503).json({ ok: false, message: 'DB unavailable or migrations failed', detail: err && err.message });
+  }
+});
+
+// Local lightweight auth middleware for routes that may be mounted
+// into an app that doesn't provide the global `requireAuth` from server-auth.js
+// This checks for desktop mode, an injected `req.user`, or a test user on app.locals
+function ensureAuth(req, res, next) {
+  // If the hosting app provides a centralized requireAuth middleware, use it
+  try {
+    if (req.app && req.app.locals && req.app.locals.requireAuth) {
+      return req.app.locals.requireAuth(req, res, next);
+    }
+  } catch (e) {
+    // fall through to local checks
+    console.warn('Warning: delegated requireAuth threw error', e && e.message);
+  }
+
+  if (process.env.DESKTOP_MODE === 'true') return next();
+  if (req.user) return next();
+  if (req.app && req.app.locals && req.app.locals.testAuthUser) {
+    req.user = req.app.locals.testAuthUser;
+    return next();
+  }
+  return res.status(401).json({ error: 'Authentication required' });
+}
+
 // Initialize Brief Manager for intelligent directive processing
 const briefManager = new BriefManager();
 
@@ -1142,7 +1185,7 @@ router.get('/artifacts/:id', async (req, res) => {
 });
 
 // Stream/download artifact file (secure)
-router.get('/artifacts/:id/file', async (req, res) => {
+router.get('/artifacts/:id/file', ensureAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const models = require('../models');
@@ -1158,6 +1201,36 @@ router.get('/artifacts/:id/file', async (req, res) => {
       return res.status(404).json({ error: 'Artifact file path not available' });
     }
 
+    // Authorization: if artifact references a DB project, ensure the requesting
+    // user is the project owner or an admin/owner role.
+    try {
+      if (dbArtifact && dbArtifact.project_id && req.user) {
+        const Project = require('../models').Project;
+        const proj = await Project.findByPk(dbArtifact.project_id).catch(() => null);
+        if (proj && proj.owner_id && !(req.user.role === 'owner' || req.user.role === 'admin' || req.user.id === proj.owner_id)) {
+          return res.status(403).json({ error: 'Insufficient permissions to access artifact file' });
+        }
+      }
+    } catch (e) {
+      console.warn('Authorization check failed, proceeding cautiously', e && e.message);
+    }
+
+    // If there was no DB artifact but we have a candidate path from lineage, try
+    // to infer the owning project by file_system_path and apply the same authorization.
+    try {
+      if (!dbArtifact && candidatePath && req.user) {
+        const Project = require('../models').Project;
+        // Look for a project whose file_system_path is a prefix of the candidatePath
+        const projects = await Project.findAll().catch(() => []);
+        const matching = projects.find(p => p.file_system_path && candidatePath.startsWith(p.file_system_path));
+        if (matching && matching.owner_id && !(req.user.role === 'owner' || req.user.role === 'admin' || req.user.id === matching.owner_id)) {
+          return res.status(403).json({ error: 'Insufficient permissions to access artifact file' });
+        }
+      }
+    } catch (e) {
+      console.warn('Project-by-path authorization check failed', e && e.message);
+    }
+
     // Normalize and ensure path is within agent workspaces directory
     const workspaceRoot = path.join(__dirname, '..', 'agent-workspaces');
     const normalized = path.normalize(candidatePath);
@@ -1171,10 +1244,28 @@ router.get('/artifacts/:id/file', async (req, res) => {
 
     // Try streaming the file
     try {
-      return res.sendFile(normalized, (err) => {
+      return res.sendFile(normalized, async (err) => {
         if (err) {
           console.error('❌ Error sending artifact file:', err);
           if (!res.headersSent) res.status(404).json({ error: 'File not found' });
+          return;
+        }
+
+        // Successful send: record audit
+        try {
+          const models = require('../models');
+          const bytes = (dbArtifact && dbArtifact.bytes) || null;
+          await models.Audit.create({
+            actor_id: req.user && req.user.id ? req.user.id : null,
+            action: 'artifact_download',
+            target: 'artifact',
+            target_id: id,
+            metadata: { path: normalized, bytes: bytes },
+            ip_address: req.ip,
+            user_agent: req.get('User-Agent') || null
+          }).catch(e => console.warn('Audit create failed', e && e.message));
+        } catch (e) {
+          console.warn('Audit logging failed', e && e.message);
         }
       });
     } catch (err) {

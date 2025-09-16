@@ -35,4 +35,19 @@ if (require.main === module) {
   });
 }
 
-module.exports = { runMigrations };
+async function migrationsApplied() {
+  const umzug = new Umzug({
+    migrations: { glob: path.join(__dirname, 'migrations', '*.js') },
+    context: {
+      queryInterface: sequelize.getQueryInterface(),
+      Sequelize
+    },
+    storage: new SequelizeStorage({ sequelize }),
+    logger: false
+  });
+
+  const pending = await umzug.pending();
+  return pending.length === 0;
+}
+
+module.exports = { runMigrations, migrationsApplied };

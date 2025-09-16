@@ -96,6 +96,18 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 FRONTEND_URL=http://localhost:3000
 ```
 
+## Database migrations
+
+The server uses Umzug-based migrations. Before starting the app in production, run:
+
+```
+cd server
+npm install
+npm run migrate
+```
+
+This will ensure the database schema matches the application's models.
+
 ### 4. Start the Application
 
 ```bash

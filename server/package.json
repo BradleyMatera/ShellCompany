@@ -9,8 +9,9 @@
     "start": "node index.js",
     "start:auth": "node server-auth.js",
     "start:production": "node scripts/start-production.js",
-  "test": "echo \"Production ready autonomous service\" && exit 0",
-  "test:reconcile": "node test_reconcile_integration.js"
+    "test": "echo \"Production ready autonomous service\" && exit 0",
+    "test:reconcile": "node test_reconcile_integration.js",
+    "migrate": "node migration-runner.js"
   },
   "dependencies": {
     "axios": "^1.12.1",
@@ -35,7 +36,8 @@
     "socket.io": "^4.8.1",
     "sqlite3": "^5.1.7",
     "uuid": "^13.0.0",
-    "ws": "^8.14.2"
+    "ws": "^8.14.2",
+    "umzug": "^3.1.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
