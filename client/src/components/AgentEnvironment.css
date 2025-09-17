@@ -140,9 +140,11 @@
   position: relative;
 }
 
-.directory {
-  user-select: none;
-}
+/*.directory {
+   user-select: none; 
+
+   this is broken
+}*/
 
 .directory-header {
   display: flex;
