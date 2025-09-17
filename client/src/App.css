@@ -81,6 +81,7 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
+  min-width: -webkit-fill-available;
   min-width: fit-content;
 }
 

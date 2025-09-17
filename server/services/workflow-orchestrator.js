@@ -1,5 +1,8 @@
 const AgentExecutor = require('./agent-executor');
 const ArtifactLineage = require('./artifact-lineage');
+const CEOApprovalManager = require('./ceo-approval-manager');
+const RealProviderEngine = require('./real-provider-engine');
+const { ManagerSelectionEngine } = require('./manager-selection-engine');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 // Import models properly
@@ -18,6 +21,8 @@ class WorkflowOrchestrator {
     this.workflows = new Map();
     this.taskQueue = [];
     this.completedWorkflows = [];
+  // Pending artifacts waiting for checksum or DB FK resolution
+  this.pendingArtifactPersist = [];
 
     // Socket safety configuration for headless tests
     this.socketSafetyEnabled = this.options.socketSafety !== false; // default true
@@ -25,6 +30,21 @@ class WorkflowOrchestrator {
 
     // Initialize artifact lineage system
     this.artifactLineage = new ArtifactLineage();
+
+    // Initialize CEO approval manager for workflow blocking
+    this.ceoApprovalManager = new CEOApprovalManager({
+      socketio: this.socketio,
+      isHeadless: this.isHeadless
+    });
+
+    // Initialize real provider engine for actual AI API calls
+    this.realProviderEngine = new RealProviderEngine({
+      socketio: this.socketio,
+      isHeadless: this.isHeadless
+    });
+
+    // Initialize intelligent manager selection engine
+    this.managerSelectionEngine = new ManagerSelectionEngine();
 
     // Initialize autonomous agents with specialized capabilities
     this.initializeAgents();
@@ -37,6 +57,110 @@ class WorkflowOrchestrator {
     }
 
     console.log('✅ Workflow Orchestrator initialized with artifact lineage tracking', this.isHeadless ? '(headless mode)' : '(with socket support)');
+  }
+
+  /**
+   * Compute SHA256 checksum for a file path. Returns hex string or empty string on failure.
+   */
+  async computeFileChecksum(filePath) {
+    try {
+      if (!filePath) return '';
+      const buf = await fs.readFile(filePath);
+      return crypto.createHash('sha256').update(buf).digest('hex');
+    } catch (e) {
+      // Could not read file (might not exist yet) — return empty so callers defer persistence
+      return '';
+    }
+  }
+
+  // Allow external callers (e.g., API) to pre-generate workflow IDs
+  generateWorkflowId() {
+    return uuidv4();
+  }
+
+  /**
+   * Start a new workflow - Entry point for API calls
+   */
+  async startWorkflow({ workflowId, directive, managerId, priority = 'medium', realExecution = true }) {
+    try {
+      console.log(`[WORKFLOW-START] Starting workflow ${workflowId}: ${directive}`);
+
+      // Create the workflow using existing createWorkflow method
+      const workflow = await this.createWorkflow(directive, null, workflowId);
+
+      // Update with additional parameters
+      workflow.metadata = {
+        ...workflow.metadata,
+        managerId,
+        priority,
+        real_execution: realExecution,
+        startedViaAPI: true
+      };
+
+      // Start the workflow processor to begin task execution
+      if (this.autoStart) {
+        console.log(`[WORKFLOW-START] Workflow ${workflowId} queued for execution`);
+      }
+
+      return {
+        success: true,
+        workflowId,
+        status: workflow.status,
+        tasks: workflow.tasks,
+        message: `Workflow ${workflowId} started successfully`
+      };
+
+    } catch (error) {
+      console.error(`[WORKFLOW-START] Failed to start workflow ${workflowId}:`, error);
+      throw new Error(`Failed to start workflow: ${error.message}`);
+    }
+  }
+
+  /**
+   * Unblock workflow after CEO approval
+   */
+  async unblockWorkflowAfterApproval(workflowId, approvalDecision) {
+    try {
+      const workflow = this.workflows.get(workflowId);
+      if (!workflow) {
+        console.error(`[WORKFLOW-UNBLOCK] Workflow ${workflowId} not found`);
+        return;
+      }
+
+      console.log(`[WORKFLOW-UNBLOCK] CEO approved workflow ${workflowId} - unblocking completion`);
+
+      // Mark as completed
+      workflow.status = 'completed';
+      workflow.endTime = Date.now();
+      workflow.totalDuration = workflow.endTime - workflow.startTime;
+      workflow.metadata.ceoApproved = true;
+      workflow.metadata.ceoApprovedAt = new Date();
+      workflow.metadata.ceoApprovedBy = approvalDecision.approver;
+      workflow.metadata.approvalRecordId = approvalDecision.approvalRecord.id;
+
+      this.completedWorkflows.push(workflow);
+
+      // Update database
+      await Workflow.update({
+        status: 'completed',
+        end_time: new Date(workflow.endTime),
+        total_duration: workflow.totalDuration,
+        metadata: workflow.metadata
+      }, { where: { id: workflowId } });
+
+      // Emit completion event
+      this.safeSocketEmit('workflow-completed', {
+        workflowId,
+        status: 'completed',
+        totalDuration: workflow.totalDuration,
+        ceoApproved: true
+      });
+
+      console.log(`[WORKFLOW-UNBLOCK] Workflow ${workflowId} completed after CEO approval in ${Math.round(workflow.totalDuration / 1000)}s`);
+
+    } catch (error) {
+      console.error(`[WORKFLOW-UNBLOCK] Failed to unblock workflow ${workflowId}:`, error);
+    }
   }
 
   startArtifactReconciler() {
@@ -599,7 +723,7 @@ class WorkflowOrchestrator {
     return managers;
   }
 
-  selectManagerForDirective(directive, briefContext = null) {
+  async selectManagerForDirective(directive, briefContext = null) {
     // Prefer explicit requested agent from briefContext
     if (briefContext && briefContext.requestedAgent && briefContext.requestedAgent !== '') {
       return briefContext.requestedAgent;
@@ -611,6 +735,16 @@ class WorkflowOrchestrator {
       return explicitAgentFromDirective;
     }
 
+    // Use AI-powered manager selection engine for intelligent assignment
+    try {
+      const selectedManager = await this.managerSelectionEngine.selectManager(directive);
+      console.log(`[MANAGER-SELECTION] AI selected: ${selectedManager.name} (confidence: ${selectedManager.confidence})`);
+      return selectedManager.name;
+    } catch (error) {
+      console.error('[MANAGER-SELECTION] AI selection failed, falling back to heuristics:', error);
+    }
+
+    // Fallback to pattern-based heuristics
     const directiveLower = directive.toLowerCase();
 
     // Domain-specific manager assignments for all 36 agents
@@ -868,8 +1002,9 @@ class WorkflowOrchestrator {
     return [...new Set(neededDepartments)]; // Remove duplicates
   }
 
-  async createWorkflow(userDirective, briefContext = null) {
-    const workflowId = uuidv4();
+  async createWorkflow(userDirective, briefContext = null, providedWorkflowId = null) {
+    // Allow callers to provide a workflowId so API endpoints can return early
+    const workflowId = providedWorkflowId || uuidv4();
     const startTime = Date.now();
 
     console.log(`[WORKFLOW:${workflowId}] Creating workflow for directive: "${userDirective}"`);
@@ -921,7 +1056,8 @@ class WorkflowOrchestrator {
       metadata: {
         project_id: briefContext?.projectId || null,
         project_name: briefContext?.projectName || null,
-        interaction_mode: 'autonomous_with_oversight'
+        interaction_mode: 'autonomous_with_oversight',
+        real_execution: true // Ensure all workflows use real execution by default
       }
     };
 
@@ -1099,7 +1235,7 @@ class WorkflowOrchestrator {
         const requested = explicitRequestedAgent;
 
         // Determine manager (prefer requested if makes sense)
-        const manager = this.selectManagerForDirective(directive, briefContext) || requested || 'Alex';
+        const manager = await this.selectManagerForDirective(directive, briefContext) || requested || 'Alex';
 
         // Choose specialist for file creation (markdown -> Nova by default)
         const filename = (briefContext && briefContext.filename) ? briefContext.filename : (lower.includes('about-me') || lower.includes('about me') ? 'ABOUT_ME.md' : 'ABOUT_ME.md');
@@ -1852,22 +1988,47 @@ class WorkflowOrchestrator {
 
     // Check if workflow is complete
     if (completed + failed === total) {
-      // If workflow requires manager approval/CEO sign-off, ensure both have occurred before marking completed
+      // REAL CEO APPROVAL BLOCKING - Use the CEO Approval Manager
       const requiresManagerApproval = !!workflow.metadata && !!workflow.metadata.requiresManagerApproval;
       const managerReviewDone = workflow.tasks.some(t => t.type === 'manager_review' && t.status === 'completed');
-      const ceoApproved = !!(workflow.metadata && workflow.metadata.ceoApproved);
+      
+      if (requiresManagerApproval && managerReviewDone) {
+        // Submit workflow for CEO approval and BLOCK until approved
+        const approvalResult = await this.ceoApprovalManager.submitForApproval(workflowId, {
+          directive: workflow.directive,
+          totalTasks: total,
+          completedTasks: completed,
+          artifacts: workflow.artifacts,
+          manager: workflow.manager || 'Alex',
+          estimatedValue: this.calculateWorkflowValue(workflow),
+          riskLevel: this.assessWorkflowRisk(workflow)
+        });
 
-      if (requiresManagerApproval && !(managerReviewDone && ceoApproved)) {
-        // Mark as waiting for final approval rather than completed
-        workflow.status = 'waiting_for_ceo_approval';
-        console.log(`[WORKFLOW:${workflowId}] Waiting for manager review and CEO approval before finalizing`);
-      } else {
+        // submitForApproval always returns success: true for submission, not approval decision
+        // Workflow is now BLOCKED until CEO makes approval decision via API
+        workflow.status = 'blocked_pending_ceo_approval';
+        workflow.metadata.pendingApprovalId = approvalResult.approvalRequestId;
+        workflow.metadata.submittedForCeoApproval = true;
+        workflow.metadata.submittedForApprovalAt = new Date();
+        console.log(`[WORKFLOW:${workflowId}] BLOCKED - Submitted for CEO approval (Request ID: ${approvalResult.approvalRequestId})`);
+
+        // Register listener for approval decision to unblock workflow
+        this.ceoApprovalManager.once('approvalDecision', (decision) => {
+          if (decision.workflowId === workflowId && decision.decision === 'approved') {
+            this.unblockWorkflowAfterApproval(workflowId, decision);
+          }
+        });
+      } else if (!requiresManagerApproval) {
+        // Simple workflows without manager approval
         workflow.status = failed > 0 ? 'failed' : 'completed';
         workflow.endTime = Date.now();
         workflow.totalDuration = workflow.endTime - workflow.startTime;
 
         this.completedWorkflows.push(workflow);
         console.log(`[WORKFLOW:${workflowId}] Workflow ${workflow.status} in ${Math.round(workflow.totalDuration / 1000)}s`);
+      } else {
+        workflow.status = 'waiting_for_manager_review';
+        console.log(`[WORKFLOW:${workflowId}] Waiting for manager review before CEO approval`);
       }
     }
 
@@ -2895,17 +3056,20 @@ Guidelines for contributing to this project.
           console.warn('[LINEAGE] workspace-manager not available for artifact path resolution:', e.message);
         }
 
-        // If checksum not provided, try to compute from file
+        // If checksum not provided, try to compute from file using helper
         try {
           if ((!lineageData.checksum || lineageData.checksum === '') && lineageData.absolutePath) {
-            try {
-              const fileBuf = await fs.readFile(lineageData.absolutePath);
-              const sum = crypto.createHash('sha256').update(fileBuf).digest('hex');
+            const sum = await this.computeFileChecksum(lineageData.absolutePath);
+            if (sum && sum.length > 0) {
               lineageData.checksum = sum;
-              lineageData.fileSize = fileBuf.length;
-            } catch (e) {
-              // Could not read file to compute checksum; proceed without it
-              console.warn('[LINEAGE] Could not compute checksum for', lineageData.absolutePath, e.message);
+              try {
+                const stats = await fs.stat(lineageData.absolutePath);
+                lineageData.fileSize = stats.size;
+              } catch (e) {
+                // ignore stat errors
+              }
+            } else {
+              console.warn('[LINEAGE] Could not compute checksum for', lineageData.absolutePath);
             }
           }
         } catch (e) {
@@ -3595,6 +3759,77 @@ ${Object.entries(clarificationResponses).map(([question, answer], i) =>
       'yaml': 'yaml'
     };
     return typeMap[ext] || 'unknown';
+  }
+
+  /**
+   * Calculate estimated business value of a workflow for CEO approval
+   */
+  calculateWorkflowValue(workflow) {
+    let baseValue = 1000; // Base value in USD
+    
+    // Factor in complexity (number of tasks)
+    const taskMultiplier = Math.min(workflow.tasks.length * 100, 2000);
+    baseValue += taskMultiplier;
+    
+    // Factor in number of agents involved
+    const uniqueAgents = new Set(workflow.tasks.map(t => t.assignedAgent)).size;
+    baseValue += uniqueAgents * 150;
+    
+    // Factor in artifacts created
+    const artifactValue = (workflow.artifacts?.length || 0) * 200;
+    baseValue += artifactValue;
+    
+    // Factor in directive complexity
+    const directive = (workflow.directive || '').toLowerCase();
+    if (directive.includes('production') || directive.includes('deploy')) baseValue *= 1.5;
+    if (directive.includes('security') || directive.includes('compliance')) baseValue *= 1.3;
+    if (directive.includes('integration') || directive.includes('api')) baseValue *= 1.2;
+    
+    // Factor in execution time (longer workflows are typically more valuable)
+    if (workflow.totalDuration) {
+      const hoursFactor = Math.min(workflow.totalDuration / (1000 * 60 * 60), 8) * 100;
+      baseValue += hoursFactor;
+    }
+    
+    return Math.round(baseValue);
+  }
+
+  /**
+   * Assess risk level of a workflow for CEO approval
+   */
+  assessWorkflowRisk(workflow) {
+    let riskScore = 0;
+    const directive = (workflow.directive || '').toLowerCase();
+    
+    // High-risk keywords
+    if (directive.includes('production') || directive.includes('deploy')) riskScore += 3;
+    if (directive.includes('database') || directive.includes('migration')) riskScore += 2;
+    if (directive.includes('security') || directive.includes('auth')) riskScore += 2;
+    if (directive.includes('delete') || directive.includes('remove')) riskScore += 3;
+    if (directive.includes('public') || directive.includes('external')) riskScore += 2;
+    
+    // Medium-risk keywords
+    if (directive.includes('api') || directive.includes('integration')) riskScore += 1;
+    if (directive.includes('user') || directive.includes('customer')) riskScore += 1;
+    if (directive.includes('payment') || directive.includes('financial')) riskScore += 2;
+    
+    // Factor in workflow complexity
+    if (workflow.tasks.length > 10) riskScore += 1;
+    if (workflow.tasks.length > 20) riskScore += 2;
+    
+    // Factor in number of agents (more agents = more coordination risk)
+    const uniqueAgents = new Set(workflow.tasks.map(t => t.assignedAgent)).size;
+    if (uniqueAgents > 5) riskScore += 1;
+    if (uniqueAgents > 10) riskScore += 2;
+    
+    // Factor in failed tasks
+    const failedTasks = workflow.tasks.filter(t => t.status === 'failed').length;
+    riskScore += failedTasks;
+    
+    // Convert to risk level
+    if (riskScore >= 8) return 'high';
+    if (riskScore >= 4) return 'medium';
+    return 'low';
   }
 }
 

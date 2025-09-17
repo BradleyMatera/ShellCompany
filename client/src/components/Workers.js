@@ -451,8 +451,8 @@ const Workers = () => {
       {/* Agent Environment Modal */}
       {selectedAgent && (
         <AgentEnvironment 
-          agent={selectedAgent}
-          onBack={() => setSelectedAgent(null)}
+          agentName={selectedAgent.name}
+          onClose={() => setSelectedAgent(null)}
         />
       )}
     </div>

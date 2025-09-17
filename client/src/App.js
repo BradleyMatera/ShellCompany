@@ -138,8 +138,8 @@ function App() {
         {activeTab === 'ai-project' && <AIProject />}
         {activeTab === 'agent-environment' && selectedAgent && (
           <AgentEnvironment 
-            agent={selectedAgent}
-            onBack={() => setActiveTab('workers')}
+            agentName={selectedAgent.name}
+            onClose={() => setActiveTab('workers')}
           />
         )}
       </main>

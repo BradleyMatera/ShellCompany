@@ -3,6 +3,8 @@ const { Agent, Task, User } = require('../models');
 const agentEngine = require('../services/agent-engine');
 const agentRoster = require('../services/agent-roster');
 const BriefManager = require('../services/brief-manager');
+const CEOApprovalManager = require('../services/ceo-approval-manager');
+const LiveAgentInfrastructure = require('../services/live-agent-infrastructure');
 const WebSocket = require('ws');
 const os = require('os');
 const path = require('path');
@@ -11,6 +13,183 @@ const taskRunner = require('../services/task-runner');
 const bus = (() => { try { return require('../services/bus'); } catch { return { emit(){ } }; } })();
 
 const router = express.Router();
+
+// =====================================================
+// REAL ENGINE STATUS API ENDPOINTS (PHASE 3)
+// =====================================================
+
+// Get engine status with real provider metrics
+router.get('/engine/status', async (req, res) => {
+  try {
+    const realProviderEngine = req.app.locals.realProviderEngine;
+    if (!realProviderEngine) {
+      return res.status(500).json({ error: 'Real Provider Engine not available' });
+    }
+
+    const { ping } = req.query;
+    const status = await realProviderEngine.getEngineStatus(!!ping);
+    
+    res.json({
+      providers: status.providers,
+      capacity: status.capacity,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error fetching engine status:', error);
+    res.status(500).json({ error: 'Failed to fetch engine status' });
+  }
+});
+
+// Get provider logs
+router.get('/engine/logs', async (req, res) => {
+  try {
+    const { provider, limit = 50 } = req.query;
+    const realProviderEngine = req.app.locals.realProviderEngine;
+    
+    if (!realProviderEngine) {
+      return res.status(500).json({ error: 'Real Provider Engine not available' });
+    }
+
+    const logs = await realProviderEngine.getProviderLogs(provider, parseInt(limit));
+    res.json({ logs });
+  } catch (error) {
+    console.error('❌ Error fetching provider logs:', error);
+    res.status(500).json({ error: 'Failed to fetch provider logs' });
+  }
+});
+
+// Add provider log entry
+router.post('/engine/logs', async (req, res) => {
+  try {
+    const realProviderEngine = req.app.locals.realProviderEngine;
+    if (!realProviderEngine) {
+      return res.status(500).json({ error: 'Real Provider Engine not available' });
+    }
+
+    await realProviderEngine.addLogEntry(req.body);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Error adding log entry:', error);
+    res.status(500).json({ error: 'Failed to add log entry' });
+  }
+});
+
+// Get available models for all providers
+router.get('/engine/models', async (req, res) => {
+  try {
+    const realProviderEngine = req.app.locals.realProviderEngine;
+    if (!realProviderEngine) {
+      return res.status(500).json({ error: 'Real Provider Engine not available' });
+    }
+
+    const models = await realProviderEngine.getAvailableModels();
+    res.json(models);
+  } catch (error) {
+    console.error('❌ Error fetching models:', error);
+    res.status(500).json({ error: 'Failed to fetch models' });
+  }
+});
+
+// Get provider policies/cost modes
+router.get('/engine/policies', async (req, res) => {
+  try {
+    const realProviderEngine = req.app.locals.realProviderEngine;
+    if (!realProviderEngine) {
+      return res.status(500).json({ error: 'Real Provider Engine not available' });
+    }
+
+    const policies = await realProviderEngine.getProviderPolicies();
+    res.json(policies);
+  } catch (error) {
+    console.error('❌ Error fetching policies:', error);
+    res.status(500).json({ error: 'Failed to fetch policies' });
+  }
+});
+
+// Test a specific provider
+router.post('/engine/test/:providerKey', async (req, res) => {
+  try {
+    const { providerKey } = req.params;
+    const { prompt = 'Echo test: Hello from ShellCompany Engine Status.' } = req.body;
+    
+    const realProviderEngine = req.app.locals.realProviderEngine;
+    if (!realProviderEngine) {
+      return res.status(500).json({ error: 'Real Provider Engine not available' });
+    }
+
+    const result = await realProviderEngine.testProvider(providerKey, prompt);
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        latencyMs: result.latencyMs,
+        snippet: result.snippet,
+        model: result.model
+      });
+    } else {
+      res.json({
+        success: false,
+        error: result.error,
+        statusCode: result.statusCode
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error testing provider:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to test provider',
+      detail: error.message 
+    });
+  }
+});
+
+// Set preferred model for a provider
+router.post('/engine/provider/:providerKey/model', async (req, res) => {
+  try {
+    const { providerKey } = req.params;
+    const { model } = req.body;
+    
+    const realProviderEngine = req.app.locals.realProviderEngine;
+    if (!realProviderEngine) {
+      return res.status(500).json({ error: 'Real Provider Engine not available' });
+    }
+
+    const result = await realProviderEngine.setPreferredModel(providerKey, model);
+    
+    if (result.success) {
+      res.json({ success: true, model });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  } catch (error) {
+    console.error('❌ Error setting preferred model:', error);
+    res.status(500).json({ error: 'Failed to set preferred model' });
+  }
+});
+
+// Set cost mode for a provider
+router.post('/engine/provider/:providerKey/cost-mode', async (req, res) => {
+  try {
+    const { providerKey } = req.params;
+    const { mode } = req.body;
+    
+    const realProviderEngine = req.app.locals.realProviderEngine;
+    if (!realProviderEngine) {
+      return res.status(500).json({ error: 'Real Provider Engine not available' });
+    }
+
+    const result = await realProviderEngine.setCostMode(providerKey, mode);
+    
+    if (result.success) {
+      res.json({ success: true, mode });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  } catch (error) {
+    console.error('❌ Error setting cost mode:', error);
+    res.status(500).json({ error: 'Failed to set cost mode' });
+  }
+});
 
 // Readiness endpoint: returns 200 if DB is reachable and migrations are applied.
 router.get('/ready', async (req, res) => {
@@ -452,15 +631,15 @@ router.get('/tasks', async (req, res) => {
 // Create a workflow (existing boardroom/autonomous entrypoint)
 router.post('/workflow', ensureAuth, async (req, res) => {
   try {
-  const directive = req.body && req.body.directive;
-  const briefContext = req.body && (req.body.completedBrief || req.body.brief || req.body.briefContext) || null;
+    const directive = req.body && req.body.directive;
+    const briefContext = req.body && (req.body.completedBrief || req.body.brief || req.body.briefContext) || null;
     if (!directive) return res.status(400).json({ error: 'directive required' });
 
     // Use orchestrator injected on app.locals
     const orchestrator = req.app.locals.orchestrator;
     if (!orchestrator) return res.status(500).json({ error: 'orchestrator not available' });
 
-    // Detect whether this directive requires cross-department collaboration
+    // Detect whether this directive requires cross-department collaboration synchronously
     let collaborationDepartments = [];
     try {
       if (typeof orchestrator.detectCollaborationNeeds === 'function') {
@@ -471,49 +650,27 @@ router.post('/workflow', ensureAuth, async (req, res) => {
       console.warn('[WORKFLOW CREATE] Collaboration detection failed:', e && e.message);
     }
 
-    let result;
-    try {
-      result = await orchestrator.createWorkflow(directive, briefContext);
+    // Generate a workflowId now so we can return early (202) and let the orchestrator proceed in background
+    const workflowId = (typeof orchestrator === 'object' && orchestrator && orchestrator.generateWorkflowId) ? orchestrator.generateWorkflowId() : `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-      // Broadcast collaboration hint for UI consumers
-      if (collaborationDepartments && collaborationDepartments.length > 1) {
-        broadcast({ type: 'workflow-collaboration-detected', workflowId: result.workflowId, departments: collaborationDepartments, timestamp: new Date().toISOString() });
-      }
-
-      return res.json({ success: true, workflowId: result.workflowId, tasks: result.workflow.tasks, collaborationDetected: (collaborationDepartments.length > 1), collaborationDepartments });
-    } catch (e) {
-      console.error('[WORKFLOW CREATE] Orchestrator createWorkflow failed, returning local preview workflow:', e && e.message);
-      // Fallback: synthesize a minimal in-memory workflow preview so the UI can show collaboration and tasks
-      try {
-        let tasks = [];
-        if (collaborationDepartments && collaborationDepartments.length > 1 && typeof orchestrator.createCollaborationWorkflow === 'function') {
-          tasks = orchestrator.createCollaborationWorkflow(directive, collaborationDepartments, briefContext);
-        } else if (typeof orchestrator.decomposeDirective === 'function') {
-          // decomposeDirective may be async
-          tasks = await orchestrator.decomposeDirective(directive, briefContext);
-        }
-
-        const fallbackWorkflow = {
-          workflowId: `local-${Date.now()}`,
-          id: `local-${Date.now()}`,
-          directive,
-          status: 'planned',
-          tasks: tasks || [],
-          estimates: {},
-          progress: { completed: 0, total: (tasks && tasks.length) || 0, percentage: 0 },
-          artifacts: [],
-          metadata: briefContext || {}
-        };
-
-        // Broadcast a lightweight created event for UI clients
-        broadcast({ type: 'workflow-created', workflow: fallbackWorkflow, timestamp: new Date().toISOString() });
-
-        return res.json({ success: true, workflowId: fallbackWorkflow.workflowId, workflow: fallbackWorkflow, collaborationDetected: (collaborationDepartments.length > 1), collaborationDepartments, message: 'Created local workflow preview (DB persistence failed)'});
-      } catch (inner) {
-        console.error('[WORKFLOW CREATE] Failed to synthesize fallback workflow:', inner && inner.message);
-        return res.status(500).json({ success: false, error: 'Failed to create autonomous workflow', details: e && e.message });
-      }
+    // Broadcast collaboration hint for UI consumers immediately
+    if (collaborationDepartments && collaborationDepartments.length > 1) {
+      broadcast({ type: 'workflow-collaboration-detected', workflowId, departments: collaborationDepartments, timestamp: new Date().toISOString() });
     }
+
+    // Kick off workflow creation in background without blocking the HTTP response
+    (async () => {
+      try {
+        await orchestrator.createWorkflow(directive, briefContext, workflowId);
+        console.log('[WORKFLOW CREATE] Background orchestration completed for', workflowId);
+      } catch (bgErr) {
+        console.error('[WORKFLOW CREATE] Background orchestration failed for', workflowId, bgErr && bgErr.message);
+      }
+    })();
+
+    // Return early with accepted status and collaboration hint
+    return res.status(202).json({ success: true, workflowId, collaborationDetected: (collaborationDepartments.length > 1), collaborationDepartments, message: 'Workflow accepted and is being created in background' });
+
   } catch (e) {
     console.error('Failed to create workflow via API:', e && e.message);
     res.status(500).json({ error: 'failed_to_create_workflow', detail: e && e.message });
@@ -1210,6 +1367,195 @@ router.post('/brief/:briefId/create-workflow', async (req, res) => {
 });
 
 // =====================================================
+// LIVE AGENT INFRASTRUCTURE API ENDPOINTS (NEW)
+// =====================================================
+
+// Get agent workspace status and file tree
+router.get('/agents/:agentName/workspace', async (req, res) => {
+  try {
+    const { agentName } = req.params;
+    const liveAgentInfra = req.app.locals.liveAgentInfrastructure;
+    
+    if (!liveAgentInfra) {
+      return res.status(500).json({ error: 'Live Agent Infrastructure not available' });
+    }
+
+    const workspaceStatus = await liveAgentInfra.getAgentWorkspaceStatus(agentName);
+    
+    res.json({
+      success: true,
+      workspace: workspaceStatus
+    });
+  } catch (error) {
+    console.error('❌ Error fetching agent workspace:', error);
+    res.status(500).json({ error: 'Failed to fetch agent workspace' });
+  }
+});
+
+// Get all agent workspace statuses
+router.get('/agents/workspaces/all', async (req, res) => {
+  try {
+    const liveAgentInfra = req.app.locals.liveAgentInfrastructure;
+    
+    if (!liveAgentInfra) {
+      return res.status(500).json({ error: 'Live Agent Infrastructure not available' });
+    }
+
+    const allStatuses = await liveAgentInfra.getAllAgentWorkspaceStatuses();
+    
+    res.json({
+      success: true,
+      workspaces: allStatuses
+    });
+  } catch (error) {
+    console.error('❌ Error fetching all agent workspaces:', error);
+    res.status(500).json({ error: 'Failed to fetch agent workspaces' });
+  }
+});
+
+// Read file from agent workspace
+router.get('/agents/:agentName/workspace/files/*', async (req, res) => {
+  try {
+    const { agentName } = req.params;
+    const relativePath = req.params[0];
+    const liveAgentInfra = req.app.locals.liveAgentInfrastructure;
+
+    if (!liveAgentInfra) {
+      return res.status(500).json({ error: 'Live Agent Infrastructure not available' });
+    }
+
+    let fileData;
+    try {
+      fileData = await liveAgentInfra.readAgentFile(agentName, relativePath);
+    } catch (error) {
+      const msg = error && error.message ? error.message : String(error);
+      if (msg.includes('not found') || msg.includes('ENOENT')) {
+        return res.status(404).json({ error: msg });
+      } else if (msg.includes('Access denied')) {
+        return res.status(403).json({ error: msg });
+      } else if (msg.includes('not a file')) {
+        return res.status(404).json({ error: msg });
+      } else {
+        return res.status(500).json({ error: msg });
+      }
+    }
+
+    res.json({
+      success: true,
+      file: fileData
+    });
+  } catch (error) {
+    const msg = error && error.message ? error.message : String(error);
+    console.error('❌ Error reading agent file:', error);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Write file to agent workspace
+router.put('/agents/:agentName/workspace/files/*', async (req, res) => {
+  try {
+    const { agentName } = req.params;
+    const relativePath = req.params[0];
+    const { content, metadata } = req.body;
+    const liveAgentInfra = req.app.locals.liveAgentInfrastructure;
+    
+    if (!liveAgentInfra) {
+      return res.status(500).json({ error: 'Live Agent Infrastructure not available' });
+    }
+
+    const result = await liveAgentInfra.writeAgentFile(agentName, relativePath, content, {
+      ...metadata,
+      author: req.user?.name || 'api'
+    });
+    
+    res.json({
+      success: true,
+      file: result
+    });
+  } catch (error) {
+    console.error('❌ Error writing agent file:', error);
+    res.status(500).json({ error: 'Failed to write file' });
+  }
+});
+
+// Create new file in agent workspace
+router.post('/agents/:agentName/workspace/files/*', async (req, res) => {
+  try {
+    const { agentName } = req.params;
+    const relativePath = req.params[0];
+    const { content, metadata } = req.body;
+    const liveAgentInfra = req.app.locals.liveAgentInfrastructure;
+    
+    if (!liveAgentInfra) {
+      return res.status(500).json({ error: 'Live Agent Infrastructure not available' });
+    }
+
+    const result = await liveAgentInfra.createAgentFile(agentName, relativePath, content || '', {
+      ...metadata,
+      author: req.user?.name || 'api'
+    });
+    
+    res.json({
+      success: true,
+      file: result
+    });
+  } catch (error) {
+    console.error('❌ Error creating agent file:', error);
+    res.status(500).json({ error: 'Failed to create file' });
+  }
+});
+
+// Delete file from agent workspace
+router.delete('/agents/:agentName/workspace/files/*', async (req, res) => {
+  try {
+    const { agentName } = req.params;
+    const relativePath = req.params[0];
+    const liveAgentInfra = req.app.locals.liveAgentInfrastructure;
+    
+    if (!liveAgentInfra) {
+      return res.status(500).json({ error: 'Live Agent Infrastructure not available' });
+    }
+
+    const result = await liveAgentInfra.deleteAgentFile(agentName, relativePath);
+    
+    res.json({
+      success: true,
+      result
+    });
+  } catch (error) {
+    console.error('❌ Error deleting agent file:', error);
+    res.status(500).json({ error: 'Failed to delete file' });
+  }
+});
+
+// Execute command in agent workspace
+router.post('/agents/:agentName/workspace/execute', async (req, res) => {
+  try {
+    const { agentName } = req.params;
+    const { command, workingDir } = req.body;
+    const liveAgentInfra = req.app.locals.liveAgentInfrastructure;
+    
+    if (!liveAgentInfra) {
+      return res.status(500).json({ error: 'Live Agent Infrastructure not available' });
+    }
+
+    if (!command) {
+      return res.status(400).json({ error: 'Command is required' });
+    }
+
+    const result = await liveAgentInfra.executeAgentCommand(agentName, command, workingDir);
+    
+    res.json({
+      success: true,
+      execution: result
+    });
+  } catch (error) {
+    console.error('❌ Error executing agent command:', error);
+    res.status(500).json({ error: 'Failed to execute command' });
+  }
+});
+
+// =====================================================
 // ARTIFACT LINEAGE API ENDPOINTS (PHASE 3 COMPLETION)
 // =====================================================
 
@@ -1867,9 +2213,9 @@ router.get('/workflows', async (req, res) => {
       // Fix: getAllWorkflows is async, need to await it
       const allWorkflows = await orchestrator.getAllWorkflows();
       const completedWorkflows = orchestrator.completedWorkflows || [];
-      
+
       console.log(`[WORKFLOWS API] Found ${allWorkflows.length} workflows from database`);
-      
+
       // Combine active and completed workflows
       const workflows = [...allWorkflows, ...completedWorkflows].map(workflow => ({
         id: workflow.id,
@@ -1890,6 +2236,62 @@ router.get('/workflows', async (req, res) => {
   } catch (error) {
     console.error('[WORKFLOWS API] Error fetching workflows:', error);
     res.status(500).json({ error: 'Failed to fetch workflows', detail: error.message });
+  }
+});
+
+// Create new workflow - PRODUCTION GRADE
+router.post('/workflows', async (req, res) => {
+  try {
+    const { directive } = req.body;
+
+    if (!directive || typeof directive !== 'string' || directive.trim().length === 0) {
+      return res.status(400).json({ error: 'Directive is required and must be a non-empty string' });
+    }
+
+    const orchestrator = req.app.locals.orchestrator;
+    if (!orchestrator) {
+      return res.status(500).json({ error: 'Workflow orchestrator not available' });
+    }
+
+    console.log(`[WORKFLOW CREATE] Creating new workflow for directive: "${directive}"`);
+
+    // Create workflow with real manager selection by intent
+    const workflowId = orchestrator.generateWorkflowId();
+
+    // Use real manager selection engine to pick manager by intent
+    const managerSelectionEngine = orchestrator.managerSelectionEngine;
+    const selectedManager = await managerSelectionEngine.selectManagerByIntent(directive);
+
+    console.log(`[WORKFLOW CREATE] Selected manager: ${selectedManager.name} for directive type: ${selectedManager.reason}`);
+
+    // Create workflow with manager brief requirement
+    const workflow = await orchestrator.createWorkflow(directive, {
+      managerId: selectedManager.id,
+      managerName: selectedManager.name,
+      requiresManagerBrief: true,
+      requiresCEOApproval: true,
+      realExecution: true
+    });
+
+    console.log(`[WORKFLOW CREATE] Created workflow ${workflowId} with manager ${selectedManager.name}`);
+
+    res.status(201).json({
+      id: workflowId,
+      directive,
+      status: 'awaiting_manager_brief',
+      manager: selectedManager,
+      createdAt: new Date().toISOString(),
+      requiresManagerBrief: true,
+      requiresCEOApproval: true,
+      message: `Workflow created and assigned to ${selectedManager.name}. Awaiting manager brief.`
+    });
+
+  } catch (error) {
+    console.error('[WORKFLOW CREATE] Error creating workflow:', error);
+    res.status(500).json({
+      error: 'Failed to create workflow',
+      detail: error.message
+    });
   }
 });
 
@@ -2210,6 +2612,238 @@ router.post('/agents/:agentName/preview', async (req, res) => {
   } catch (error) {
     console.error(`❌ Error creating preview:`, error);
     res.status(500).json({ error: 'Failed to create preview' });
+  }
+});
+
+// Create new workflow - PRODUCTION GRADE
+router.post('/workflows', async (req, res) => {
+  try {
+    const { directive, priority = 'medium', real_execution = true } = req.body;
+
+    if (!directive) {
+      return res.status(400).json({ error: 'Directive is required' });
+    }
+
+    console.log(`🚀 [WORKFLOW CREATE] Starting real workflow: ${directive}`);
+
+    // Get services from app.locals (properly initialized instances)
+    const orchestrator = req.app.locals.orchestrator;
+    const { ManagerSelectionEngine } = require('../services/manager-selection-engine');
+    const managerSelectionEngine = new ManagerSelectionEngine();
+    const { v4: uuidv4 } = require('uuid');
+
+    if (!orchestrator) {
+      return res.status(503).json({ error: 'Workflow orchestrator not available' });
+    }
+
+    // Step 1: Select manager by intent (REAL MANAGER SELECTION)
+    const selectedManager = await managerSelectionEngine.selectManagerByIntent(directive);
+    console.log(`📋 [WORKFLOW CREATE] Selected manager: ${selectedManager.name} (${selectedManager.id})`);
+
+    // Step 2: Generate workflow ID for orchestrator
+    const workflowId = uuidv4();
+
+    // Step 3: Start workflow orchestration (REAL WORKFLOW LIFECYCLE)
+    const orchestrationResult = await orchestrator.startWorkflow({
+      workflowId,
+      directive,
+      managerId: selectedManager.id,
+      priority,
+      realExecution: real_execution
+    });
+
+    console.log(`✅ [WORKFLOW CREATE] Workflow ${workflowId} created successfully`);
+
+    // Create response data based on orchestration result
+    const workflowResponse = {
+      id: workflowId,
+      directive,
+      priority,
+      manager_id: selectedManager.id,
+      manager_name: selectedManager.name,
+      status: orchestrationResult.status,
+      created_at: new Date().toISOString(),
+      tasks: orchestrationResult.tasks || [],
+      estimates: orchestrationResult.estimates || {},
+      progress: orchestrationResult.progress || { completed: 0, total: 0, percentage: 0 },
+      artifacts: orchestrationResult.artifacts || [],
+      real_execution: true
+    };
+
+    // Step 4: Broadcast to all connected clients
+    broadcast({
+      type: 'workflow_created',
+      workflow: workflowResponse
+    });
+
+    res.json({
+      success: true,
+      workflow: workflowResponse,
+      message: `Workflow ${workflowId} created with manager ${selectedManager.name}`
+    });
+
+  } catch (error) {
+    console.error(`❌ [WORKFLOW CREATE] Error:`, error);
+    res.status(500).json({
+      error: 'Failed to create workflow',
+      detail: error.message
+    });
+  }
+});
+
+// CEO Approval Endpoints - PRODUCTION GRADE
+// Get pending approvals for CEO dashboard
+router.get('/ceo/approvals/pending', async (req, res) => {
+  try {
+    const ceoApprovalManager = req.app.locals.ceoApprovalManager;
+
+    if (!ceoApprovalManager) {
+      return res.status(503).json({ error: 'CEO approval manager not available' });
+    }
+
+    const pendingApprovals = ceoApprovalManager.getPendingApprovals();
+    const analytics = ceoApprovalManager.getApprovalAnalytics();
+
+    console.log(`[CEO-API] Retrieved ${pendingApprovals.length} pending approvals`);
+
+    res.json({
+      success: true,
+      pending: pendingApprovals,
+      analytics,
+      count: pendingApprovals.length
+    });
+
+  } catch (error) {
+    console.error('[CEO-API] Error getting pending approvals:', error);
+    res.status(500).json({ error: 'Failed to get pending approvals' });
+  }
+});
+
+// Process CEO approval decision - REAL BLOCKING/UNBLOCKING
+router.post('/ceo/approvals/:workflowId/decision', async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const { decision, comments = '', approver = 'ceo' } = req.body;
+
+    if (!decision || !['approved', 'rejected', 'needs_revision'].includes(decision)) {
+      return res.status(400).json({
+        error: 'Decision must be approved, rejected, or needs_revision'
+      });
+    }
+
+    const ceoApprovalManager = req.app.locals.ceoApprovalManager;
+
+    if (!ceoApprovalManager) {
+      return res.status(503).json({ error: 'CEO approval manager not available' });
+    }
+
+    console.log(`[CEO-API] Processing ${decision} for workflow ${workflowId} by ${approver}`);
+
+    // Process the approval decision (this unblocks workflow if approved)
+    const result = await ceoApprovalManager.processApprovalDecision(
+      workflowId,
+      decision,
+      approver,
+      comments
+    );
+
+    console.log(`[CEO-API] Approval decision processed: ${decision} for ${workflowId}`);
+
+    // Broadcast approval decision to all connected clients
+    broadcast({
+      type: 'ceo_approval_decision',
+      workflowId,
+      decision,
+      approver,
+      comments,
+      unblocked: result.unblocked,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      workflowId,
+      decision,
+      unblocked: result.unblocked,
+      approvalRecordId: result.approvalRecordId,
+      message: result.message
+    });
+
+  } catch (error) {
+    console.error(`[CEO-API] Error processing approval decision:`, error);
+    res.status(500).json({
+      error: 'Failed to process approval decision',
+      detail: error.message
+    });
+  }
+});
+
+// Get approval history
+router.get('/ceo/approvals/history', async (req, res) => {
+  try {
+    const { workflowId } = req.query;
+    const ceoApprovalManager = req.app.locals.ceoApprovalManager;
+
+    if (!ceoApprovalManager) {
+      return res.status(503).json({ error: 'CEO approval manager not available' });
+    }
+
+    const history = ceoApprovalManager.getApprovalHistory(workflowId);
+
+    res.json({
+      success: true,
+      history: workflowId ? history : history.slice(0, 50), // Limit to 50 for all history
+      workflowId: workflowId || null
+    });
+
+  } catch (error) {
+    console.error('[CEO-API] Error getting approval history:', error);
+    res.status(500).json({ error: 'Failed to get approval history' });
+  }
+});
+
+// Emergency unblock workflow (override)
+router.post('/ceo/approvals/:workflowId/emergency-unblock', async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const { reason, approver = 'ceo' } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({ error: 'Emergency reason is required' });
+    }
+
+    const ceoApprovalManager = req.app.locals.ceoApprovalManager;
+
+    if (!ceoApprovalManager) {
+      return res.status(503).json({ error: 'CEO approval manager not available' });
+    }
+
+    console.warn(`[CEO-API] EMERGENCY UNBLOCK: ${workflowId} by ${approver}: ${reason}`);
+
+    const result = await ceoApprovalManager.emergencyUnblock(workflowId, approver, reason);
+
+    // Broadcast emergency unblock
+    broadcast({
+      type: 'emergency_unblock',
+      workflowId,
+      approver,
+      reason,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      workflowId,
+      emergencyApprovalId: result.emergencyApprovalId,
+      message: `Workflow ${workflowId} emergency unblocked by ${approver}`
+    });
+
+  } catch (error) {
+    console.error(`[CEO-API] Error in emergency unblock:`, error);
+    res.status(500).json({
+      error: 'Failed to emergency unblock workflow',
+      detail: error.message
+    });
   }
 });
 

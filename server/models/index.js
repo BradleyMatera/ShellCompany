@@ -102,6 +102,23 @@ async function initializeDatabase() {
         console.warn('⚠️  sequelize.sync() failed:', err.message);
         console.warn('⚠️  You may need to run migrations or inspect the database.');
       }
+      // Ensure older local SQLite DB schemas get a minimal compatibility fix.
+      // Some older databases may not have a `project_id` column on the `workflows` table
+      // even though application logic and associations expect it. For local/development
+      // environments only, detect and add the column (safe ALTER TABLE ADD COLUMN).
+      try {
+        if (process.env.NODE_ENV !== 'production') {
+          const [cols] = await sequelize.query("PRAGMA table_info('workflows');");
+          const hasProjectId = Array.isArray(cols) && cols.some(c => c && c.name === 'project_id');
+          if (!hasProjectId) {
+            console.log('ℹ️  Detected missing `project_id` column on `workflows` table. Adding column (development only).');
+            await sequelize.query("ALTER TABLE `workflows` ADD COLUMN project_id TEXT;");
+            console.log('✅ Added `project_id` column to `workflows` table.');
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️  Failed to ensure `project_id` column on workflows table:', e && e.message);
+      }
     }
 
     // Create default user for autonomous agents
