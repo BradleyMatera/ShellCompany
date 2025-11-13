@@ -21,49 +21,8 @@ const AgentEnvironment = ({ agentName, onClose }) => {
       // Expand all folders by default for debugging
       setExpandedFolders(new Set(['projects', 'docs', 'src', 'components', 'assets', 'temp']));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentName]);
-
-  const buildFileTree = (files) => {
-    const tree = [];
-    const dirs = {};
-    
-    // First pass: create all directories
-    files.forEach(file => {
-      if (file.type === 'directory') {
-        const dirPath = file.path || file.name;
-        dirs[dirPath] = {
-          ...file,
-          children: []
-        };
-      }
-    });
-    
-    // Second pass: organize files and subdirectories
-    files.forEach(file => {
-      if (file.type === 'directory') {
-        const dirPath = file.path || file.name;
-        const parentPath = dirPath.split('/').slice(0, -1).join('/');
-        
-        if (parentPath && dirs[parentPath]) {
-          dirs[parentPath].children.push(dirs[dirPath]);
-        } else {
-          tree.push(dirs[dirPath]);
-        }
-      } else {
-        // It's a file
-        const filePath = file.path || file.name;
-        const parentPath = filePath.split('/').slice(0, -1).join('/');
-        
-        if (parentPath && dirs[parentPath]) {
-          dirs[parentPath].children.push(file);
-        } else {
-          tree.push(file);
-        }
-      }
-    });
-    
-    return tree;
-  };
 
   const loadAgentEnvironment = async () => {
     try {

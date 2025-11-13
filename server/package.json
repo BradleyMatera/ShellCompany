@@ -4,12 +4,13 @@
   "description": "Backend API for ShellCompany dashboard",
   "main": "index.js",
   "scripts": {
+    "de": "nodemon index.js",
     "dev": "nodemon index.js",
     "dev:auth": "nodemon server-auth.js",
     "start": "node index.js",
     "start:auth": "node server-auth.js",
     "start:production": "node scripts/start-production.js",
-  "test": "jest --runInBand",
+    "test": "jest --runInBand",
     "test:reconcile": "node test_reconcile_integration.js",
     "migrate": "node migration-runner.js"
   },
