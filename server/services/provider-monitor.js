@@ -29,7 +29,6 @@ class ProviderMonitor {
           models: 'https://api.openai.com/v1/models',
           chat: 'https://api.openai.com/v1/chat/completions'
         },
-        // ranking for selection/fallback
         rank: (id = '') => (id.includes('gpt-4o') ? 100 : id.includes('gpt-4') ? 90 : id.includes('gpt-3.5') ? 50 : 0)
       },
       openai_project: {
@@ -45,7 +44,6 @@ class ProviderMonitor {
       claude: {
         displayName: 'Claude (Anthropic)',
         envVar: 'CLAUDE_API_KEY',
-        // Curated list due to lack of public models list endpoint
         defaultModel: 'claude-sonnet-4-20250514',
         curated: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'],
         endpoints: {
@@ -55,11 +53,10 @@ class ProviderMonitor {
       gemini: {
         displayName: 'Gemini (Google)',
         envVar: 'GEMINI_API_KEY',
-        // We will discover current models and prefer 1.5-pro-latest, then 1.5-pro-002, then 1.5-flash, then chat-bison-001
         defaultModel: 'models/gemini-1.5-pro-latest',
         endpoints: {
           models: 'https://generativelanguage.googleapis.com/v1beta/models',
-          generateBase: 'https://generativelanguage.googleapis.com/v1beta' // use `${generateBase}/${model}:generateContent?key=...` where model includes 'models/...'
+          generateBase: 'https://generativelanguage.googleapis.com/v1beta'
         },
         rank: (name = '') => {
           const id = name.replace('models/', '');
@@ -80,6 +77,17 @@ class ProviderMonitor {
           chat: 'https://api.x.ai/v1/chat/completions'
         },
         rank: (id = '') => (id.startsWith('grok-4') ? 100 : id.startsWith('grok-3') ? 90 : id.startsWith('grok-3-fast') ? 80 : id.startsWith('grok-3-mini') ? 70 : 0)
+      },
+      ollama: {
+        displayName: 'Ollama',
+        envVar: 'OLLAMA_ENDPOINT',
+        defaultModel: 'llama3',
+        endpoints: {
+          models: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434/api/tags',
+          chat: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434/api/generate'
+        },
+        curated: ['llama3', 'phi3', 'mistral', 'codellama', 'llama2', 'gemma', 'dolphin-mixtral', 'llava', 'llama3-8b', 'llama3-70b'],
+        rank: (id = '') => (id.includes('llama3-70b') ? 100 : id.includes('llama3-8b') ? 90 : id.includes('llama3') ? 80 : id.includes('phi3') ? 70 : id.includes('mistral') ? 60 : 50)
       }
     };
   }
@@ -482,6 +490,38 @@ class ProviderMonitor {
         });
       }
 
+        if (provider === 'ollama') {
+          // Ping Ollama by listing available models
+          const url = meta.endpoints.models;
+          try {
+            const r = await fetch(url, { method: 'GET' });
+            const latencyMs = Date.now() - t0;
+            const text = await r.text();
+            if (!r.ok) throw new Error(`HTTP ${r.status} ${text.slice(0, 128)}`);
+            let data = {};
+            try { data = JSON.parse(text); } catch {}
+            const models = Array.isArray(data.models) ? data.models : [];
+            const model = models[0]?.name || meta.defaultModel;
+            this.record(provider, { action: 'ping', success: true, latencyMs, model, statusCode: r.status });
+            return this.updateState(provider, {
+              reachable: true,
+              lastModel: model,
+              lastLatencyMs: latencyMs,
+              lastSuccessTs: Date.now(),
+              lastCallTs: Date.now()
+            });
+          } catch (err) {
+            const latencyMs = Date.now() - t0;
+            this.record(provider, { action: 'ping', success: false, latencyMs, error: err.message });
+            return this.updateState(provider, {
+              reachable: false,
+              lastError: err.message,
+              lastLatencyMs: latencyMs,
+              lastCallTs: Date.now()
+            });
+          }
+        }
+
       if (provider === 'claude') {
         const token = this.getToken(provider);
         const r = await fetch(meta.endpoints.messages, {
@@ -679,6 +719,32 @@ class ProviderMonitor {
         const tokens = { input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 };
         return { success: true, statusCode: r.status, latencyMs, snippet, tokens };
       }
+
+        if (provider === 'ollama') {
+          // Test Ollama by generating a simple completion
+          const url = meta.endpoints.chat;
+          const payload = {
+            model,
+            prompt,
+            stream: false,
+            options: { temperature: 0 }
+          };
+          const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const latencyMs = Date.now() - t0;
+          const text = await r.text();
+          let data = {};
+          try { data = JSON.parse(text); } catch {}
+          if (!r.ok || !data) return throwNormalized(r.status, text);
+          const content = data.response || '';
+          const snippet = (content || '').slice(0, 140);
+          // Ollama does not return token usage, so set as n/a
+          const tokens = { input: 0, output: 0 };
+          return { success: true, statusCode: r.status, latencyMs, snippet, tokens };
+        }
 
       if (provider === 'claude') {
         const token = this.getToken(provider);

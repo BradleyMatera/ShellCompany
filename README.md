@@ -1,430 +1,125 @@
-# ShellCompany - Autonomous Agent Desktop Application
 
-A production-ready autonomous agent company platform with real-time workflow execution, multi-provider AI integration, and comprehensive monitoring capabilities.
+[![ShellCompany Logo](docs-site/static/img/logo.png)](https://github.com/Shell-Company/ShellCompany)
 
-## 🚀 Features
+# ShellCompany
 
-- **Board Room**: Issue directives and track workflow execution
-- **Console**: Real-time streaming logs and stdout/stderr monitoring
-- **Workers**: Interactive agent environments with file management
-- **Ongoing Projects**: **[NEW]** Complete project workspace management with real-time file editing
-- **Engine Status**: Live AI provider monitoring with cost-mode intelligence
+> **Status:** Prototype / Early Development — Not production-ready
 
-### 🔥 **New Project Management System**
-- **Interactive File Browser**: Navigate and edit project files directly in the browser
-- **Real-time File Editing**: Live code editing with save/cancel functionality
-- **Command Execution**: Run npm scripts and safe commands within projects
-- **Artifact Downloads**: Download project files and deliverables
-- **Project Continuation**: Resume and modify existing autonomous projects
-- **Workspace Integration**: Seamless connection with agent environments
-
-## 🏗️ Architecture
-
-- **Frontend**: React.js with real-time WebSocket updates
-- **Backend**: Node.js/Express with SQLite database
-- **AI Integration**: Multi-provider support (OpenAI, Claude, Gemini, xAI)
-- **Agent System**: Autonomous workflow execution with task orchestration
-- **Monitoring**: Provider health tracking, cost management, and structured logging
-
-## 📋 Prerequisites
-
-- Node.js 16+ and npm
-- Git
-- API keys for AI providers (optional for demo mode)
-
-## 🛠️ Quick Start
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/[your-username]/ShellCompany.git
-cd ShellCompany
-```
-
-### 2. Install Dependencies
-
-```bash
-# Install root dependencies
-npm install
-
-# Install server dependencies
-cd server
-npm install
-
-# Install client dependencies
-cd ../client
-npm install
-```
-
-### 3. Environment Setup
-
-```bash
-# Copy the example environment file
-cd ../server
-cp .env.example .env
-```
-
-Edit `server/.env` with your configuration:
-
-```env
-# Basic Configuration
-NODE_ENV=development
-PORT=3001
-DESKTOP_MODE=true
-
-# Database (SQLite - no setup required)
-DATABASE_URL=sqlite://./shellcompany.db
-
-# Session & Security
-SESSION_SECRET=your-secure-session-secret-here
-ENCRYPTION_KEY=your-32-character-encryption-key
-JWT_SECRET=your-jwt-secret-here
-
-# AI Provider API Keys (add as needed)
-OPENAI_API_KEY=sk-your-openai-key-here
-CLAUDE_API_KEY=sk-ant-your-claude-key-here
-GEMINI_API_KEY=your-gemini-key-here
-X_AI_API_KEY=xai-your-xai-key-here
-
-# OAuth (optional for full features)
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-# Frontend URL
-FRONTEND_URL=http://localhost:3000
-```
-
-## Database migrations
-
-The server uses Umzug-based migrations. Before starting the app in production, run:
-
-```
-cd server
-npm install
-npm run migrate
-```
-
-This will ensure the database schema matches the application's models.
-
-### 4. Start the Application
-
-```bash
-# From the root directory, start both server and client
-npm run dev
-```
-
-Or start them separately:
-
-```bash
-# Terminal 1 - Start server
-cd server
-npm start
-
-# Terminal 2 - Start client
-cd client
-npm start
-```
-
-### 5. Access the Application
-
-- **Frontend**: http://localhost:3000
-- **API**: http://localhost:3001
-
-## Tests
-
-Run the reconcile integration test (server-side) to validate artifact reconciler behavior:
-
-```bash
-cd server
-npm run test:reconcile
-```
-
-## 🎯 Usage Examples
-
-### Basic Workflow Execution
-
-1. **Navigate to Board Room**
-2. **Issue a Directive**: "Create a landing page for a coffee shop"
-3. **Monitor Progress**: 
-   - View real-time logs in Console tab
-   - Track agent activity in Workers tab
-   - Check project artifacts in Ongoing Projects
-
-### Engine Status Monitoring
-
-1. **Navigate to Engine Status**
-2. **View Provider Health**: See all 5 AI providers (OpenAI, Claude, Gemini, xAI, OpenAI Project)
-3. **Adjust Cost Modes**: Set economy/balanced/premium for each provider
-4. **Monitor Usage**: Track tokens, requests, and latency
-
-### Agent Environment Interaction
-
-1. **Navigate to Workers tab**
-2. **Click on an Agent**: (Alex, Nova, Pixel, etc.)
-3. **View Files**: Browse agent workspace and artifacts
-4. **Edit Files**: Modify code directly in the dashboard
-5. **Chat with Agent**: Ask about implementation decisions
-
-## 🔧 Configuration
-
-### AI Provider Setup
-
-The application supports multiple AI providers with automatic fallback:
-
-```env
-# Primary providers
-OPENAI_API_KEY=sk-...           # OpenAI GPT models
-CLAUDE_API_KEY=sk-ant-...       # Anthropic Claude
-GEMINI_API_KEY=...              # Google Gemini
-X_AI_API_KEY=xai-...            # xAI Grok
-
-# Project-specific OpenAI key
-OPENAI_PROJECT_API_KEY=sk-proj-...
-```
-
-### Cost Mode Configuration
-
-Set cost preferences for each provider:
-- **Economy**: Fastest, cheapest models
-- **Balanced**: Performance/cost balance
-- **Premium**: Highest quality models
-
-### OAuth Integration (Optional)
-
-For full GitHub/Google integration:
-
-1. **Create OAuth Apps**:
-   - GitHub: https://github.com/settings/developers
-   - Google: https://console.cloud.google.com/
-
-2. **Configure Callback URLs**:
-   - GitHub: `http://localhost:3001/auth/github/callback`
-   - Google: `http://localhost:3001/auth/google/callback`
-
-## 🏃‍♂️ Demo Mode
-
-Run without API keys for demonstration:
-
-```bash
-# Set demo environment variables
-NODE_ENV=development
-DEMO_MODE=true
-
-# Start application
-npm run dev
-```
-
-In demo mode:
-- ✅ UI fully functional
-- ✅ Workflow creation and tracking
-- ✅ Agent environments and file management
-- ✅ Console logging and monitoring
-- ⚠️  AI provider calls use mock responses
-
-## 📊 API Endpoints
-
-### Workflow Management
-```bash
-# Create workflow
-POST /api/autonomous/workflow
-{
-  "directive": "Create a todo app",
-  "priority": "normal"
-}
-
-# Get workflows
-GET /api/autonomous/workflows
-
-# Get workflow details
-GET /api/autonomous/workflow/:id
-```
-
-### **🔥 Project Management (NEW)**
-```bash
-# Get all project workspaces
-GET /api/projects
-
-# Get specific project details
-GET /api/projects/:agentName/:projectName
-
-# File management
-GET /api/projects/:agentName/:projectName/files/:filePath    # Read file
-PUT /api/projects/:agentName/:projectName/files/:filePath    # Save file
-
-# Command execution
-POST /api/projects/:agentName/:projectName/commands
-{
-  "command": "npm run build"
-}
-
-# Project operations
-POST /api/projects/:agentName/:projectName/clone
-{
-  "newProjectName": "project-copy"
-}
-
-DELETE /api/projects/:agentName/:projectName
-```
-
-### Engine Status
-```bash
-# Get provider status
-GET /api/engine/status
-
-# Get cost policies
-GET /api/engine/policies
-
-# Set cost mode
-POST /api/engine/provider/:provider/cost-mode
-{
-  "mode": "premium"
-}
-
-# Test provider
-POST /api/engine/test/:provider
-{
-  "prompt": "Hello world"
-}
-```
-
-### Agent Environments
-```bash
-# Get agent environment
-GET /api/autonomous/agents/:name/environment
-
-# Get agent files
-GET /api/autonomous/agents/:name/files/:path
-```
-
-## 🗂️ Project Structure
-
-```
-ShellCompany/
-├── client/                 # React frontend
-│   ├── src/components/    # UI components
-│   │   ├── OngoingProjects.js  # [NEW] Project management interface
-│   │   ├── AgentEnvironment.js # Enhanced agent workspaces
-│   │   └── ...            # Other components
-│   └── public/           # Static assets
-├── server/                # Node.js backend
-│   ├── models/           # Database models
-│   ├── routes/           # API routes
-│   ├── services/         # Business logic
-│   │   ├── project-manager.js    # [NEW] Project CRUD operations
-│   │   ├── workspace-manager.js  # Agent workspace management
-│   │   └── ...           # Other services
-│   └── agent-workspaces/ # Agent environments
-│       ├── alex-workspace/       # Project Manager workspace
-│       ├── nova-workspace/       # Frontend Developer workspace
-│       └── .../{project}-project/  # Individual projects
-├── docs/                  # [NEW] Documentation
-│   └── PROJECT_MANAGEMENT.md    # Project system documentation
-├── package.json          # Root dependencies
-└── README.md            # This file
-```
-
-## 🔐 Security Considerations
-
-- ✅ API keys stored in environment variables
-- ✅ Sensitive files excluded via .gitignore
-- ✅ Session-based authentication
-- ✅ Input validation and sanitization
-- ✅ CORS configuration for development
-
-## 🚢 Deployment
-
-### Local Development
-```bash
-npm run dev
-```
-
-### Production Build
-```bash
-# Build client
-cd client
-npm run build
-
-# Start production server
-cd ../server
-NODE_ENV=production npm start
-```
-
-### Environment Variables for Production
-```env
-NODE_ENV=production
-PORT=3001
-DATABASE_URL=your-production-database-url
-SESSION_SECRET=strong-production-secret
-# ... other production configs
-```
-
-## 🧪 Testing
-
-```bash
-# Run tests
-npm test
-
-# Run with coverage
-npm run test:coverage
-
-# Test specific component
-npm test -- --grep "BoardRoom"
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-**Port Already in Use**
-```bash
-# Kill process on port 3001
-lsof -ti:3001 | xargs kill
-
-# Or use different port
-PORT=3002 npm start
-```
-
-**Database Issues**
-```bash
-# Reset database
-rm server/shellcompany.db
-npm run dev
-```
-
-**Module Not Found**
-```bash
-# Clean install
-rm -rf node_modules package-lock.json
-npm install
-```
-
-### Getting Help
-
-- 📋 **Issues**: [GitHub Issues](https://github.com/[your-username]/ShellCompany/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/[your-username]/ShellCompany/discussions)
-- 📧 **Email**: support@shellcompany.ai
-
-## 🏆 Acknowledgments
-
-- Built with React, Node.js, and SQLite
-- AI integration with OpenAI, Anthropic, Google, and xAI
-- Real-time updates via Socket.IO
-- UI components and styling
+ShellCompany is an experimental desktop app for managing and monitoring teams of autonomous AI agents. The goal is to provide a dashboard for issuing tasks ("directives") to agents ("Workers") and tracking their progress in real time. **Currently, most features are incomplete or placeholders.**
 
 ---
 
-**ShellCompany** - *The future of autonomous agent collaboration* 🚀
+## Project Overview
+
+- **Intended Purpose:**
+	- Run a local multi-agent network on your desktop/laptop
+	- Issue tasks to agents, monitor execution, view logs
+	- Integrate with multiple AI providers (OpenAI, Claude, Gemini, etc.)
+- **Current Reality:**
+	- UI and backend exist, but most features are not functional
+	- No real agent orchestration, live logging, or project management
+	- Documentation describes planned features, not actual capabilities
+
+---
+
+## Feature Status Table
+
+| Feature            | Status         | Description |
+|--------------------|---------------|-------------|
+| React UI           | Implemented   | Basic frontend, mostly static placeholders |
+| Node.js Backend    | Partial       | Some API endpoints, migration scripts |
+| Agent Workspaces   | Partial       | Directory structure, no real agent logic |
+| Board Room         | Not Started   | No true task manager or directive system |
+| Console (Logs)     | Not Started   | No real-time logging or output streaming |
+| Workers/Agents     | Not Started   | No interactive environments |
+| Engine Status      | Not Started   | No AI provider integration/status dashboard |
+| Ongoing Projects   | Not Started   | No persistent project/task tracking |
+| API Endpoints      | Partial       | Some endpoints, many missing |
+| Demo Mode          | Not Started   | No real demo functionality |
+| Monitoring/Cost    | Not Started   | Not implemented |
+| Docs Site          | Implemented   | Docusaurus site, needs integration |
+
+---
+
+## Quick Start (Prototype Only)
+
+```bash
+git clone https://github.com/Shell-Company/ShellCompany.git
+cd ShellCompany
+npm install
+# For client UI
+cd client && npm install && npm start
+# For server (API)
+cd ../server && npm install && node index.js
+```
+
+> **Note:** Most features will not work as described in the docs. This is a framework for future development.
+
+---
+
+## Roadmap
+
+### Phase 1: Core Functionality
+- Define MVP: Task creation, agent runner, basic logging
+- Implement agent logic (Node.js child processes or Python scripts)
+- Connect UI to backend for real data
+
+### Phase 2: Multi-Agent Network
+- Launch multiple agent processes
+- Task assignment and progress tracking
+- Status dashboard
+
+### Phase 3: Advanced Features
+- AI provider integration
+- Project tracking and persistence
+- Monitoring and cost modes
+- Demo mode
+
+---
+
+## Contributing
+
+We welcome contributions to help make ShellCompany real! See the [docs-site](docs-site/) for more details, or open an issue/PR.
+
+## Developer Quick Start (recommended)
+
+This project uses a root `dev` orchestrator to start the API server and the CRA client with one command.
+
+1. Copy `.env.example` to `.env` and fill any provider keys you want to test.
+
+2. From the repository root, run:
+
+```bash
+npm install
+npm run dev
+```
+
+This will:
+- Start the server (on `PORT` or `3001` by default)
+- Start the CRA client (on `3000` by default)
+
+If you prefer to run services individually:
+
+```bash
+# Server
+cd server && npm run de
+
+# Client
+cd client && npm start
+```
+
+Note: The experimental `local-ui/` Next.js scaffold has been archived to `archive/local-ui` — the canonical front-end is the CRA app in `client/`.
+
+Client -> Server configuration:
+- The CRA client can be pointed at any backend by setting `REACT_APP_API_BASE` in `.env` (e.g. `REACT_APP_API_BASE=http://localhost:3001`). If unset, the client will use relative paths and the CRA dev proxy.
+
+Troubleshooting:
+- If the client reports proxy errors, ensure the server is running on the expected port.
+- Use `lsof -i :3001` to see what process is listening on the server port.
+
+
+---
+
+## License
+
+MIT

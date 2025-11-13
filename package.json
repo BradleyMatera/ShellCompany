@@ -3,13 +3,15 @@
   "version": "1.0.0",
   "description": "Custom project management dashboard for ShellCompany",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev": "bash ./scripts/dev.sh",
+    "dev:node": "node ./scripts/dev.js",
+    "dev:bun": "bash ./scripts/dev.sh",
     "server": "cd server && npm run dev",
     "client": "cd client && npm run dev",
     "build": "cd client && npm run build",
     "start": "cd server && npm start"
   },
-  "devDependencies": {
+  "dependencies": {
     "concurrently": "^8.2.2"
   }
 }

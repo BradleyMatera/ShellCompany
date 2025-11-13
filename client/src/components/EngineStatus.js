@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
+import useEngineStatus from '../hooks/useEngineStatus';
 import './EngineStatus.css';
 
 const fetchJsonSafe = async (url, options) => {
-  const res = await fetch(url, options);
+  const useApi = typeof url === 'string' && (url.startsWith('/api') || url.startsWith('/engine') || url.startsWith('api/'));
+  const res = useApi ? await apiFetch(url, options) : await fetch(url, options);
   const status = res.status;
   const text = await res.text().catch(() => '');
   let json;
@@ -16,7 +18,8 @@ const INTEGRATION_NOTES = {
   openai_project: 'OpenAI Projects key; same models as OpenAI with per-project quotas.',
   claude: 'Used for planning/reasoning; typical models: claude-sonnet-4-20250514, claude-3-5-haiku-20241022.',
   gemini: 'Used for research/fast drafts; typical models: models/gemini-1.5-pro-latest, models/gemini-1.5-flash.',
-  xai: 'xAI Grok integration; typical models: grok-4, grok-3, grok-3-mini.'
+  xai: 'xAI Grok integration; typical models: grok-4, grok-3, grok-3-mini.',
+  ollama: 'Ollama (cloud/local) is the widest, cheapest, and most flexible provider. Used for agents requiring broad model access and cost efficiency. Models: llama3, phi3, mistral, etc. Integrated live via agent-engine and orchestrator.'
 };
 
 const formatAgo = (ts) => {
@@ -187,13 +190,15 @@ const ProviderCard = ({
           {INTEGRATION_NOTES[provider.key] || 'Integrated via agent-engine routing and orchestrator model selection.'}
         </div>
 
-        {(provider.lastError || provider.lastStatusCode) && (
-          <div className="provider-error" title="Most recent error observed for this provider">
-            ⚠️ {provider.lastStatusCode ? `HTTP ${provider.lastStatusCode} — ` : ''}{provider.lastError || 'Error'}
+        {/* Enhanced error reporting */}
+        {(provider.lastError || provider.lastStatusCode || provider.status === 'offline') && (
+          <div className="provider-error" title="Most recent error observed for this provider" style={{ color: '#ef4444', fontWeight: 'bold', marginTop: 8 }}>
+            ⚠️ {provider.lastStatusCode ? `HTTP ${provider.lastStatusCode} — ` : ''}{provider.lastError || (provider.status === 'offline' ? 'Provider is offline or unreachable.' : 'Error')}
+            {provider.status === 'offline' && <div style={{ fontSize: '0.95em', marginTop: 4 }}>Check API key, endpoint, or network connectivity.</div>}
           </div>
         )}
         {provider.lastHint ? (
-          <div className="provider-hint" title="Hint for remediation">
+          <div className="provider-hint" title="Hint for remediation" style={{ color: '#f59e0b', marginTop: 4 }}>
             💡 {provider.lastHint}
           </div>
         ) : null}
@@ -203,248 +208,26 @@ const ProviderCard = ({
 };
 
 const EngineStatus = ({ className }) => {
-  const [providers, setProviders] = useState([]);
-  const [capacity, setCapacity] = useState({
-    activeAgents: 0,
-    maxConcurrent: 0,
-    queuedTasks: 0,
-    completedToday: 0
-  });
-  const [selectedProvider, setSelectedProvider] = useState(null);
-  const [logs, setLogs] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [testing, setTesting] = useState({});
-  const [testResult, setTestResult] = useState(null);
-  const [error, setError] = useState(null);
-  const [models, setModels] = useState({});
-  const [policies, setPolicies] = useState({});
-
-  const fetchStatus = async ({ ping = false } = {}) => {
-    try {
-      setLoading(true);
-      const url = `/api/engine/status${ping ? '?ping=true' : ''}`;
-      const { ok, status, json, text } = await fetchJsonSafe(url);
-      if (!ok) {
-        try {
-          await fetch('/api/engine/logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: 'engine',
-              action: 'status_fetch',
-              success: false,
-              statusCode: status,
-              error: (json && json.error) || 'Non-JSON or error response from backend',
-              snippet: (text || '').slice(0, 200)
-            })
-          });
-        } catch {}
-        throw new Error((json && json.error) || `Backend returned non-JSON (HTTP ${status}). See server logs.`);
-      }
-      setProviders(Array.isArray(json.providers) ? json.providers : []);
-      setCapacity(json.capacity || { activeAgents: 0, maxConcurrent: 0, queuedTasks: 0, completedToday: 0 });
-      setError(null);
-    } catch (error) {
-      console.error('Failed to fetch engine status:', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchLogs = async (providerKey, limit = 50) => {
-    try {
-      const { ok, status, json, text } = await fetchJsonSafe(`/api/engine/logs?provider=${encodeURIComponent(providerKey)}&limit=${limit}`);
-      if (!ok) {
-        try {
-          await fetch('/api/engine/logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: providerKey,
-              action: 'logs_fetch',
-              success: false,
-              statusCode: status,
-              error: (json && json.error) || 'Non-JSON or error response from backend',
-              snippet: (text || '').slice(0, 200)
-            })
-          });
-        } catch {}
-        console.error('Failed to fetch logs:', (json && json.error) || `HTTP ${status}`);
-        return;
-      }
-      setLogs(prev => ({ ...prev, [providerKey]: (json.logs || []) }));
-    } catch (e) {
-      console.error('Failed to fetch logs:', e);
-    }
-  };
-
-  const fetchModels = async () => {
-    try {
-      const { ok, status, json, text } = await fetchJsonSafe('/api/engine/models');
-      if (!ok) {
-        try {
-          await fetch('/api/engine/logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: 'engine',
-              action: 'models_fetch',
-              success: false,
-              statusCode: status,
-              error: (json && json.error) || 'Non-JSON or error response from backend',
-              snippet: (text || '').slice(0, 200)
-            })
-          });
-        } catch {}
-        return;
-      }
-      setModels(json || {});
-    } catch (e) {
-      // ignore; status will still render
-      console.error('Failed to fetch models:', e);
-    }
-  };
-
-  const fetchPolicies = async () => {
-    try {
-      const { ok, status, json, text } = await fetchJsonSafe('/api/engine/policies');
-      if (!ok) {
-        try {
-          await fetch('/api/engine/logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: 'engine',
-              action: 'policies_fetch',
-              success: false,
-              statusCode: status,
-              error: (json && json.error) || 'Failed to fetch policies',
-              snippet: (text || '').slice(0, 200)
-            })
-          });
-        } catch {}
-        return;
-      }
-      setPolicies(json || {});
-    } catch (e) {
-      console.error('Failed to fetch policies:', e);
-    }
-  };
-
-  const changeModel = async (providerKey, model) => {
-    try {
-      const { ok, status, json, text } = await fetchJsonSafe(`/api/engine/provider/${encodeURIComponent(providerKey)}/model`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model })
-      });
-      if (!ok) {
-        try {
-          await fetch('/api/engine/logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: providerKey,
-              action: 'set_preferred_model',
-              success: false,
-              statusCode: status,
-              error: (json && json.error) || 'Failed to set preferred model',
-              snippet: (text || '').slice(0, 200)
-            })
-          });
-        } catch {}
-      } else {
-        setTestResult({ provider: providerKey, ok: true, latencyMs: 0, snippet: `Preferred model set to ${model}`, model });
-      }
-      await fetchStatus();
-      await fetchModels();
-      await fetchLogs(providerKey, 50);
-    } catch (e) {
-      console.error('Failed to set preferred model:', e);
-      setTestResult({ provider: providerKey, ok: false, error: e.message });
-    }
-  };
-
-  const changeCostMode = async (providerKey, mode) => {
-    try {
-      const { ok, status, json, text } = await fetchJsonSafe(`/api/engine/provider/${encodeURIComponent(providerKey)}/cost-mode`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode })
-      });
-      if (!ok) {
-        try {
-          await fetch('/api/engine/logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: providerKey,
-              action: 'set_cost_mode',
-              success: false,
-              statusCode: status,
-              error: (json && json.error) || 'Failed to set cost mode',
-              snippet: (text || '').slice(0, 200)
-            })
-          });
-        } catch {}
-      } else {
-        setPolicies(prev => ({ ...prev, [providerKey]: mode }));
-        setTestResult({ provider: providerKey, ok: true, latencyMs: 0, snippet: `Cost mode set to ${mode}` });
-      }
-      await fetchStatus();
-      await fetchModels();
-      await fetchPolicies();
-      await fetchLogs(providerKey, 50);
-    } catch (e) {
-      console.error('Failed to set cost mode:', e);
-      setTestResult({ provider: providerKey, ok: false, error: e.message });
-    }
-  };
-
-  const testProvider = async (providerKey) => {
-    try {
-      setTesting(prev => ({ ...prev, [providerKey]: true }));
-      setTestResult(null);
-      const { ok, status, json, text } = await fetchJsonSafe(`/api/engine/test/${encodeURIComponent(providerKey)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: 'Echo test: Hello from ShellCompany Engine Status.' })
-      });
-      if (!ok || json.success === false) {
-        try {
-          await fetch('/api/engine/logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: providerKey,
-              action: 'test',
-              success: false,
-              statusCode: json.statusCode || status,
-              error: (json && json.error) || 'Non-JSON or error response from backend',
-              snippet: (text || '').slice(0, 200)
-            })
-          });
-        } catch {}
-        setTestResult({ provider: providerKey, ok: false, error: (json && json.error) || `Backend returned non-JSON (HTTP ${status}). See server logs.` });
-      } else {
-        setTestResult({
-          provider: providerKey,
-          ok: true,
-          latencyMs: json.latencyMs,
-          snippet: json.snippet,
-          model: json.model
-        });
-      }
-      // Refresh status and logs after test
-      await fetchStatus();
-      await fetchLogs(providerKey, 50);
-    } catch (e) {
-      setTestResult({ provider: providerKey, ok: false, error: e.message });
-    } finally {
-      setTesting(prev => ({ ...prev, [providerKey]: false }));
-    }
-  };
+  const {
+    providers,
+    capacity,
+    selectedProvider,
+    setSelectedProvider,
+    logs,
+    loading,
+    testing,
+    testResult,
+    error,
+    models,
+    policies,
+    fetchStatus,
+    fetchLogs,
+    fetchModels,
+    fetchPolicies,
+    changeModel,
+    changeCostMode,
+    testProvider
+  } = useEngineStatus();
 
   const handleSelect = (providerKey) => {
     setSelectedProvider(providerKey);

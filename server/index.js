@@ -41,7 +41,7 @@ function pushEvent(evt) {
 }
 
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'],
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:3002'],
   credentials: true
 }));
 app.use(express.json());
@@ -865,6 +865,14 @@ app.put('/api/autonomous/workflows/:workflowId/project', async (req, res) => {
 
 // Add autonomous agent routes
 app.use('/api/autonomous', autonomousRouter);
+
+// Mount MVP API routes (includes Ollama endpoints and simple MVP routes)
+try {
+  const mvpApi = require('./routes/mvp-api');
+  app.use('/api', mvpApi);
+} catch (e) {
+  console.warn('[SERVER] Failed to mount mvp-api routes:', e && e.message);
+}
 
 // Real-time workflow progress with agent communication
 app.get('/api/autonomous/workflows/:workflowId/progress', async (req, res) => {
